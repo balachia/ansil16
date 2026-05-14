@@ -1,0 +1,6 @@
+# macOS
+.DS_Store
+
+# user palettes you don't want committed
+# (drop them in ~/.config/ansil16/ as private.conf etc; uncomment to ignore)
+# palettes/private*.conf

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# ansil16-emit -- emit OSC color sequences from a palette file.
+#
+# Usage:
+#   ansil16-emit PALETTE                  # write OSC to stdout
+#   ansil16-emit PALETTE --tty PATH       # write to a specific tty
+#   ansil16-emit PALETTE --all            # write to every tty owned by this user
+
+set -euo pipefail
+
+_self=$0
+while [[ -L $_self ]]; do
+    _link=$(readlink "$_self")
+    case $_link in
+        /*) _self=$_link ;;
+        *)  _self=$(cd "$(dirname "$_self")" && pwd -P)/$_link ;;
+    esac
+done
+SELF_DIR=$(cd "$(dirname "$_self")" && pwd -P)
+# shellcheck source=../lib/common.sh
+. "$SELF_DIR/../lib/common.sh"
+
+usage() {
+    cat >&2 <<'EOF'
+Usage: ansil16-emit PALETTE [--all | --tty PATH]
+  PALETTE       path to a .conf palette file
+  --all         broadcast to every tty owned by this user
+  --tty PATH    write to a specific tty (e.g. /dev/ttys001)
+  (default)     write to stdout
+EOF
+    exit 1
+}
+
+[[ $# -ge 1 ]] || usage
+palette=$1; shift
+[[ -f $palette ]] || { echo "ansil16-emit: no such file: $palette" >&2; exit 1; }
+
+mode=stdout
+target=
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --all) mode=all; shift ;;
+        --tty) mode=tty; target=${2:-}; shift 2 ;;
+        -h|--help) usage ;;
+        *) echo "ansil16-emit: unknown arg: $1" >&2; usage ;;
+    esac
+done
+
+ansil16_parse_palette "$palette"
+osc=$(ansil16_render_osc)
+
+case $mode in
+    stdout) printf '%s' "$osc" ;;
+    tty)
+        [[ -n $target ]] || { echo "ansil16-emit: --tty needs a path" >&2; exit 1; }
+        printf '%s' "$osc" > "$target"
+        ;;
+    all)
+        ansil16_find_ttys | while IFS= read -r tty; do
+            [[ -w $tty ]] && printf '%s' "$osc" > "$tty" 2>/dev/null || true
+        done
+        ;;
+esac

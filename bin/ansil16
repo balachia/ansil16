@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# ansil16 -- apply a 16-color ANSI palette via OSC sequences.
+#
+# Subcommands:
+#   set NAME [--all]   apply palette by name; --all broadcasts to every tty
+#   list              list available palettes
+#   current           print active palette name (from state file)
+#   path NAME         print resolved path of a palette
+
+set -euo pipefail
+
+_self=$0
+while [[ -L $_self ]]; do
+    _link=$(readlink "$_self")
+    case $_link in
+        /*) _self=$_link ;;
+        *)  _self=$(cd "$(dirname "$_self")" && pwd -P)/$_link ;;
+    esac
+done
+SELF_DIR=$(cd "$(dirname "$_self")" && pwd -P)
+# shellcheck source=../lib/common.sh
+. "$SELF_DIR/../lib/common.sh"
+
+usage() {
+    cat >&2 <<'EOF'
+Usage:
+  ansil16 set NAME [--all]   apply palette; --all = broadcast to every tty
+  ansil16 list               list available palettes
+  ansil16 current            print active palette name
+  ansil16 path NAME          print resolved path of palette
+EOF
+    exit 1
+}
+
+state_dir=$(ansil16_state_dir)
+current_file=$state_dir/current
+
+[[ $# -ge 1 ]] || usage
+cmd=$1; shift
+
+case $cmd in
+    set)
+        [[ $# -ge 1 ]] || usage
+        name=$1; shift
+        broadcast=
+        if [[ ${1:-} == --all ]]; then
+            broadcast=1
+            shift
+        fi
+        palette=$(ansil16_find_palette "$name") || {
+            echo "ansil16: no palette named '$name'" >&2
+            avail=$(ansil16_list_palettes | tr '\n' ' ')
+            [[ -n $avail ]] && echo "  available: $avail" >&2
+            exit 1
+        }
+        if [[ -n $broadcast ]]; then
+            "$SELF_DIR/ansil16-emit" "$palette" --all
+        else
+            "$SELF_DIR/ansil16-emit" "$palette"
+        fi
+        mkdir -p "$state_dir"
+        printf '%s\n' "$name" > "$current_file"
+        ;;
+    list)
+        ansil16_list_palettes
+        ;;
+    current)
+        if [[ -f $current_file ]]; then
+            cat "$current_file"
+        else
+            echo "(none)" >&2
+            exit 1
+        fi
+        ;;
+    path)
+        [[ $# -ge 1 ]] || usage
+        ansil16_find_palette "$1" || {
+            echo "ansil16: no palette named '$1'" >&2
+            exit 1
+        }
+        ;;
+    -h|--help) usage ;;
+    *) echo "ansil16: unknown subcommand: $cmd" >&2; usage ;;
+esac
