@@ -5,7 +5,7 @@ A 16-color ANSI terminal palette tool. Apply hand-designed palettes (light + dar
 ## Install
 
 ```sh
-git clone https://github.com/<you>/ansil16 ~/proj/code/ansil16
+git clone https://github.com/balachia/ansil16 ~/proj/code/ansil16
 cd ~/proj/code/ansil16
 ./install.sh
 ```
