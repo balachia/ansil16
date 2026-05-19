@@ -111,3 +111,38 @@ ansil16_find_ttys() {
         *)      return 0 ;;
     esac
 }
+
+# Render kitty `@ set-colors` argument list from parsed BG/FG/CURSOR/C0..C15.
+# Prints space-separated key=value pairs on stdout (no values contain spaces).
+ansil16_render_kitty_args() {
+    local i v out='' var
+    [[ -n $BG ]]     && out+=" background=$BG"
+    [[ -n $FG ]]     && out+=" foreground=$FG"
+    [[ -n $CURSOR ]] && out+=" cursor=$CURSOR"
+    for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+        var="C$i"
+        v=${!var-}
+        [[ -n $v ]] && out+=" color${i}=$v"
+    done
+    printf '%s\n' "${out# }"
+}
+
+# Return 0 if we can talk to a local kitty. Plain `kitty @` uses kitty's
+# tty-based self-discovery, which works when invoked from inside a kitty
+# pty (the 95% case). External callers need a `listen_on` pin in kitty.conf;
+# that's their concern, not ours.
+ansil16_kitty_reachable() {
+    command -v kitty >/dev/null 2>&1 || return 1
+    kitty @ ls >/dev/null 2>&1
+}
+
+# Reset OSC sequence:
+#   ]111 ]110 ]112 = reset default bg / fg / cursor (the per-pane state tmux
+#                    captures; see notes/osc-vs-kitty-ipc.md lines 56–67)
+#   ]104          = reset all 16 ANSI palette slots to terminal defaults
+# Together this returns the terminal to its compiled-in defaults across both
+# namespaces. Cells already drawn with old colors won't visually update until
+# they redraw (e.g., next prompt cycle, `clear`, or new output).
+ansil16_render_reset_osc() {
+    printf '\033]111\a\033]110\a\033]112\a\033]104\a'
+}

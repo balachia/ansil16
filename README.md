@@ -1,6 +1,6 @@
 # ansil16
 
-A 16-color ANSI terminal palette tool. Apply hand-designed palettes (light + dark) at runtime via OSC escape sequences, with no terminal-specific config.
+A 16-color ANSI terminal palette tool. Apply hand-designed palettes (light + dark) at runtime via OSC escape sequences, or via kitty's remote-control socket when available.
 
 ## Install
 
@@ -10,24 +10,29 @@ cd ~/proj/code/ansil16
 ./install.sh
 ```
 
-Symlinks `ansil16` and `ansil16-emit` into `~/.local/bin/`, and exposes the palette dir at `~/.config/ansil16/`.
+Symlinks `ansil16`, `ansil16-emit`, and `ansil16-kitty` into `~/.local/bin/`, and exposes the palette dir at `~/.config/ansil16/`.
 
 ## Use
 
 ```sh
 ansil16 list                       # show available palettes
-ansil16 set luv-rainbow-dark       # apply to current terminal
+ansil16 set luv-rainbow-dark       # apply: kitty IPC if reachable, else OSC
 ansil16 set luv-rainbow-light      # switch
-ansil16 set luv-rainbow-dark --all # broadcast to every tty owned by this user
+ansil16 set luv-rainbow-dark --all # OSC broadcast to every tty (OSC backend only)
 ansil16 current                    # show last-applied palette
+ansil16 reset                      # reset bg/fg/cursor + 16 ANSI slots on this tty
+ansil16 reset --all                # broadcast reset + clear the persisted-palette state
 ```
+
+`set` picks a backend automatically; force one with `--kitty` or `--osc`. The kitty path uses `kitty @ set-colors` over the local socket — it bypasses tmux/ssh layers entirely but needs `allow_remote_control yes` in `kitty.conf`. The OSC path writes escape sequences to ttys; see `notes/osc-vs-kitty-ipc.md` for when each is the right tool.
 
 For composability:
 
 ```sh
-ansil16-emit ~/.config/ansil16/luv-rainbow-dark.conf       # OSC to stdout
-ansil16-emit foo.conf --tty /dev/ttys003                   # specific tty
-ansil16-emit foo.conf --all                                # every tty
+ansil16-emit  ~/.config/ansil16/luv-rainbow-dark.conf      # OSC to stdout
+ansil16-emit  foo.conf --tty /dev/ttys003                  # specific tty
+ansil16-emit  foo.conf --all                               # every tty
+ansil16-kitty foo.conf                                     # kitty IPC, all OS windows
 ```
 
 ## Palette format

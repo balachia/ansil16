@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# ansil16-kitty -- apply a palette via kitty's remote-control socket.
+#
+# Usage:
+#   ansil16-kitty PALETTE
+#
+# Translates a palette .conf into `kitty @ set-colors --all --configured ...`.
+# Requires `allow_remote_control yes` (or socket-only) in kitty.conf and a
+# reachable local kitty socket. Bypasses the pty entirely, so tmux / ssh
+# layers don't interfere. See notes/osc-vs-kitty-ipc.md for rationale.
+
+set -euo pipefail
+
+_self=$0
+while [[ -L $_self ]]; do
+    _link=$(readlink "$_self")
+    case $_link in
+        /*) _self=$_link ;;
+        *)  _self=$(cd "$(dirname "$_self")" && pwd -P)/$_link ;;
+    esac
+done
+SELF_DIR=$(cd "$(dirname "$_self")" && pwd -P)
+# shellcheck source=../lib/common.sh
+. "$SELF_DIR/../lib/common.sh"
+
+usage() {
+    cat >&2 <<'EOF'
+Usage: ansil16-kitty PALETTE
+  PALETTE  path to a .conf palette file
+EOF
+    exit 1
+}
+
+[[ $# -ge 1 ]] || usage
+case ${1:-} in -h|--help) usage ;; esac
+palette=$1; shift
+[[ $# -eq 0 ]] || { echo "ansil16-kitty: unexpected arg: $1" >&2; usage; }
+[[ -f $palette ]] || { echo "ansil16-kitty: no such file: $palette" >&2; exit 1; }
+
+ansil16_parse_palette "$palette"
+args=$(ansil16_render_kitty_args)
+[[ -n $args ]] || { echo "ansil16-kitty: palette has no colors" >&2; exit 1; }
+
+# Plain `kitty @` — kitty's tty-based self-discovery handles the inside-kitty
+# case (the only one base ansil16 targets). External callers (Alfred, skhd)
+# need `listen_on` pinned in their own kitty.conf; that's out of scope here.
+kitty @ ls >/dev/null 2>&1 || {
+    echo "ansil16-kitty: kitty IPC unreachable." >&2
+    echo "  Run this from inside a kitty window, or pin listen_on in kitty.conf for external use." >&2
+    exit 1
+}
+
+# Foreground synchronous call. Backgrounded `kitty @ set-colors` raises EIO
+# in kitty 0.46.2 regardless of detach strategy, and neither --no-response
+# nor --timeout exist on `kitty @` / `kitten @` in this version, so the
+# fire-and-forget routes are closed. With many windows + --all + --configured
+# the ack can occasionally lag past kitty's internal IPC timeout and produce
+# "Error: i/o timeout"; treat that as cosmetic (kitty applies what it can
+# on its event loop regardless) and exit success.
+# shellcheck disable=SC2086  # $args is intentionally word-split
+err=$(kitty @ set-colors --all --configured $args 2>&1 >/dev/null) || true
+case $err in
+    "") ;;
+    *"i/o timeout"*) ;;
+    *) echo "$err" >&2; exit 1 ;;
+esac

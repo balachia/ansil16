@@ -7,18 +7,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `ansil16` is a 16-color ANSI palette tool. The user has hand-designed light + dark CIELUV palettes ("luv-rainbow") and previously applied them with a small shell script (`~/.local/bin/theme`) that converted xrdb files to OSC escape sequences. This project replaces and cleans up that workflow.
 
 Two halves planned:
-1. **Palette applier** (phase 1, current) — `ansil16` + `ansil16-emit`. Reads `.conf` files, emits OSC `]4;N;#hex`, `]10` (fg), `]11` (bg), `]12` (cursor) sequences to a tty.
+1. **Palette applier** (phase 1, current) — `ansil16` + `ansil16-emit` + `ansil16-kitty`. Reads `.conf` files. Two backends: OSC escape sequences written to ttys, or `kitty @ set-colors` over kitty's local socket. `ansil16 set` auto-picks (kitty if reachable, OSC otherwise); `--kitty` / `--osc` force.
 2. **Browser designer** (phase 2, not built) — single-file HTML at `designer/index.html`, follows the `rg-colors` pattern (no build, no deps, opens via `open`). Edits palette files interactively. Replaces or wraps the R-based generators that live separately at `~/proj/code/color-space-palettes/`.
 
 ## Running
 
 ```sh
-./install.sh                       # symlinks into ~/.local/bin, ~/.config/ansil16
+./install.sh                              # symlinks into ~/.local/bin, ~/.config/ansil16
 ansil16 list
-ansil16 set luv-rainbow-dark       # OSC to current terminal
-ansil16 set luv-rainbow-dark --all # broadcast to every tty
+ansil16 set luv-rainbow-dark              # auto-pick backend
+ansil16 set luv-rainbow-dark --kitty      # force kitty IPC
+ansil16 set luv-rainbow-dark --osc        # force OSC to current tty
+ansil16 set luv-rainbow-dark --osc --all  # OSC broadcast to every tty
+ansil16 reset                             # reset bg/fg/cursor + 16 ANSI slots, this tty
+ansil16 reset --all                       # broadcast reset; also drops state file
 ansil16 current
-ansil16-emit palettes/foo.conf     # low-level, composable
+ansil16-emit  palettes/foo.conf           # low-level OSC, composable
+ansil16-kitty palettes/foo.conf           # low-level kitty IPC, composable
 ```
 
 No build, no tests, no external deps beyond bash + coreutils + `readlink`. Portable bash (`#!/usr/bin/env bash`, `set -euo pipefail`).
@@ -27,17 +32,24 @@ No build, no tests, no external deps beyond bash + coreutils + `readlink`. Porta
 
 ```
 bin/
-  ansil16        # high-level UX: set/list/current/path
+  ansil16        # high-level UX: set/reset/list/current/path
   ansil16-emit   # low-level OSC emitter (stdout / --tty PATH / --all)
+  ansil16-kitty  # low-level kitty IPC: `kitty @ set-colors --all --configured ...`
 lib/
-  common.sh      # shared bash: parse_palette, render_osc, find_ttys, find_palette
+  common.sh      # shared bash: parse_palette, render_osc, render_kitty_args,
+                 #              render_reset_osc, kitty_reachable, find_ttys,
+                 #              find_palette
 palettes/
   *.conf         # key=value, 18 values (bg, fg, c0..c15), comments OK
+notes/
+  osc-vs-kitty-ipc.md   # why kitty IPC was added; tmux/ssh failure modes
 designer/        # phase 2, empty
 install.sh       # symlink-based self-install
 ```
 
-**Split rationale**: `ansil16-emit` is the composable Unix primitive (one input file, one output). `ansil16` is the human CLI on top, manages state. Both source `lib/common.sh` after resolving their own symlink chain (the bins live at `~/.local/bin/` post-install, but need to find the repo to locate `common.sh` and `palettes/`).
+**Split rationale**: `ansil16-emit` and `ansil16-kitty` are composable Unix primitives (one input file → one effect via a single channel). `ansil16` is the human CLI on top, manages state and picks a backend. All three bins source `lib/common.sh` after resolving their own symlink chain (the bins live at `~/.local/bin/` post-install, but need to find the repo to locate `common.sh` and `palettes/`).
+
+**Backend selection (`ansil16 set`)**: `--auto` (default) probes `kitty @ ls` for a reachable local kitty socket; success → `ansil16-kitty`, failure → `ansil16-emit`. `--kitty` / `--osc` force a backend (no probe). `--all` is OSC-only — kitty's `set-colors --all` already covers every OS window/tab on that host. See `notes/osc-vs-kitty-ipc.md` for the host-scoping rule (don't `ansil16 set` inside a tmux pane rendered by a *different* host's kitty) and the OSC-vs-IPC failure-mode analysis driving this split.
 
 **Lookup precedence**: `ansil16 set foo` resolves to `~/.config/ansil16/foo.conf` if present, else `<repo>/palettes/foo.conf`. Since `~/.config/ansil16` is a symlink to `<repo>/palettes`, adding a palette to one location is the same as the other — there's no separate "user palettes" concept to manage. User customs that shouldn't be committed are `.gitignore`d within that dir.
 

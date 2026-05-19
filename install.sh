@@ -23,9 +23,10 @@ safe_symlink() {
 }
 
 echo "installing ansil16 from $REPO:"
-safe_symlink "$REPO/bin/ansil16"      "$BIN/ansil16"
-safe_symlink "$REPO/bin/ansil16-emit" "$BIN/ansil16-emit"
-safe_symlink "$REPO/palettes"         "$CONFIG"
+safe_symlink "$REPO/bin/ansil16"       "$BIN/ansil16"
+safe_symlink "$REPO/bin/ansil16-emit"  "$BIN/ansil16-emit"
+safe_symlink "$REPO/bin/ansil16-kitty" "$BIN/ansil16-kitty"
+safe_symlink "$REPO/palettes"          "$CONFIG"
 echo "  $STATE/  (state dir, ready)"
 
 case ":$PATH:" in

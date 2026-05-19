@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-# ansil16 -- apply a 16-color ANSI palette via OSC sequences.
+# ansil16 -- apply a 16-color ANSI palette.
 #
 # Subcommands:
-#   set NAME [--all]   apply palette by name; --all broadcasts to every tty
-#   list              list available palettes
-#   current           print active palette name (from state file)
-#   path NAME         print resolved path of a palette
+#   set NAME [--auto|--kitty|--osc] [--all]
+#                      apply palette. Default --auto prefers kitty IPC if
+#                      reachable, falls back to OSC; --all is OSC-only and
+#                      broadcasts to every tty.
+#   reset [--all]      reset to terminal defaults: bg/fg/cursor (]111 ]110 ]112)
+#                      AND all 16 ANSI slots (]104). Emits to current tty by
+#                      default; --all broadcasts to every tty and also clears
+#                      the persisted-palette state file.
+#   list               list available palettes
+#   current            print active palette name (from state file)
+#   path NAME          print resolved path of a palette
 
 set -euo pipefail
 
@@ -24,7 +31,11 @@ SELF_DIR=$(cd "$(dirname "$_self")" && pwd -P)
 usage() {
     cat >&2 <<'EOF'
 Usage:
-  ansil16 set NAME [--all]   apply palette; --all = broadcast to every tty
+  ansil16 set NAME [--auto|--kitty|--osc] [--all]
+                             apply palette. --auto (default) prefers kitty
+                             IPC if reachable, falls back to OSC.
+                             --all (OSC only) = broadcast to every tty.
+  ansil16 reset [--all]      emit reset OSC to current tty (or every tty)
   ansil16 list               list available palettes
   ansil16 current            print active palette name
   ansil16 path NAME          print resolved path of palette
@@ -42,24 +53,66 @@ case $cmd in
     set)
         [[ $# -ge 1 ]] || usage
         name=$1; shift
+        mode=auto
         broadcast=
-        if [[ ${1:-} == --all ]]; then
-            broadcast=1
-            shift
-        fi
+        while [[ $# -gt 0 ]]; do
+            case $1 in
+                --auto)  mode=auto;  shift ;;
+                --kitty) mode=kitty; shift ;;
+                --osc)   mode=osc;   shift ;;
+                --all)   broadcast=1; shift ;;
+                *) echo "ansil16: unknown arg: $1" >&2; usage ;;
+            esac
+        done
         palette=$(ansil16_find_palette "$name") || {
             echo "ansil16: no palette named '$name'" >&2
             avail=$(ansil16_list_palettes | tr '\n' ' ')
             [[ -n $avail ]] && echo "  available: $avail" >&2
             exit 1
         }
-        if [[ -n $broadcast ]]; then
-            "$SELF_DIR/ansil16-emit" "$palette" --all
-        else
-            "$SELF_DIR/ansil16-emit" "$palette"
-        fi
+        # Resolve effective backend.
+        backend=
+        case $mode in
+            kitty) backend=kitty ;;
+            osc)   backend=osc ;;
+            auto)
+                if ansil16_kitty_reachable; then backend=kitty
+                else backend=osc
+                fi ;;
+        esac
+        case $backend in
+            kitty) "$SELF_DIR/ansil16-kitty" "$palette" ;;
+            osc)
+                if [[ -n $broadcast ]]; then
+                    "$SELF_DIR/ansil16-emit" "$palette" --all
+                else
+                    "$SELF_DIR/ansil16-emit" "$palette"
+                fi ;;
+        esac
         mkdir -p "$state_dir"
         printf '%s\n' "$name" > "$current_file"
+        ;;
+    reset)
+        reset_all=
+        while [[ $# -gt 0 ]]; do
+            case $1 in
+                --all) reset_all=1; shift ;;
+                *) echo "ansil16: unknown arg: $1" >&2; usage ;;
+            esac
+        done
+        if [[ -n $reset_all ]]; then
+            seq=$(ansil16_render_reset_osc)
+            ansil16_find_ttys | while IFS= read -r tty; do
+                [[ -w $tty ]] && printf '%s' "$seq" > "$tty" 2>/dev/null || true
+            done
+            # --all means "globally back to defaults" — drop the persisted
+            # choice so `ansil16 current` reports (none) honestly. The narrow
+            # form (this tty only) keeps state intact since other ttys are
+            # still showing the previous palette.
+            rm -f "$current_file"
+        else
+            ansil16_render_reset_osc
+        fi
         ;;
     list)
         ansil16_list_palettes
