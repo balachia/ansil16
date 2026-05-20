@@ -17,6 +17,9 @@ const LIB_FILES = [
   'lib/conf.js',
   'lib/palette.js',
   'lib/metrics.js',
+  'lib/calibrate-loss.js',
+  'lib/calibrate-optimize.js',
+  'lib/calibrate-triad.js',
 ];
 
 const TEST_FILES = [
@@ -28,6 +31,9 @@ const TEST_FILES = [
   'tests/conf.test.js',
   'tests/palette.test.js',
   'tests/metrics.test.js',
+  'tests/calibrate-loss.test.js',
+  'tests/calibrate-optimize.test.js',
+  'tests/calibrate-triad.test.js',
 ];
 
 // Set up browser-like globals so lib files (which check `window`) attach to globalThis.

@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ansil16 calibrator</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --fg: #1a1a1a;
+    --muted: #666;
+    --border: #ddd;
+    --accent: #2563eb;
+  }
+  body {
+    margin: 0;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    padding: 24px;
+    max-width: 980px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px 0; }
+  .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 13px; }
+  .section { margin-bottom: 28px; }
+  .section h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 10px 0; font-weight: 600; }
+
+  .swatch-row { display: flex; gap: 4px; flex-wrap: wrap; }
+  .swatch {
+    width: 56px; height: 40px; border-radius: 4px; border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font: 10px/1 ui-monospace, "SF Mono", Menlo, monospace;
+    cursor: default;
+  }
+  .swatch .label { background: rgba(255,255,255,0.85); padding: 2px 4px; border-radius: 2px; color: #111; }
+
+  .trial {
+    background: var(--card-bg, rgba(0,0,0,0.02));
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+  }
+  .trial .prompt { font-size: 16px; margin-bottom: 20px; color: var(--fg); }
+  .trial .triad { display: flex; justify-content: center; gap: 16px; margin-bottom: 16px; }
+  .trial .triad-cell {
+    width: 200px; height: 140px; border-radius: 8px;
+    cursor: pointer; border: 3px solid transparent;
+    display: flex; align-items: flex-end; justify-content: center;
+    padding-bottom: 8px;
+    transition: transform 0.08s;
+  }
+  .trial .triad-cell:hover { transform: scale(1.03); }
+  .trial .triad-cell .key {
+    background: rgba(255,255,255,0.9); padding: 2px 8px; border-radius: 12px;
+    font: 12px/1 ui-monospace, monospace; color: #111;
+  }
+  .trial .hint { color: var(--muted); font-size: 12px; }
+
+  .progress { display: flex; gap: 24px; font-size: 12px; color: var(--muted); }
+  .progress span strong { color: var(--fg); }
+
+  button {
+    background: var(--accent); color: white; border: none; padding: 8px 16px;
+    border-radius: 6px; font: 13px -apple-system, sans-serif; cursor: pointer;
+  }
+  button:hover { background: #1d4ed8; }
+  button:disabled { background: #ccc; cursor: not-allowed; }
+  button.secondary { background: white; color: var(--fg); border: 1px solid var(--border); }
+  button.secondary:hover { background: #f5f5f5; }
+
+  .results { display: flex; gap: 24px; }
+  .results > div { flex: 1; }
+  .results h3 { font-size: 12px; margin: 0 0 8px 0; }
+
+  pre {
+    background: #f5f5f5; padding: 12px; border-radius: 4px;
+    font: 11px/1.5 ui-monospace, monospace;
+    overflow-x: auto;
+    margin: 0;
+  }
+
+  .download-links { display: flex; gap: 12px; margin-top: 12px; }
+  .download-links a {
+    color: var(--accent); text-decoration: none; font-size: 13px;
+    border: 1px solid var(--accent); padding: 6px 12px; border-radius: 4px;
+  }
+  .download-links a:hover { background: var(--accent); color: white; }
+
+  .matrix { display: inline-grid; gap: 1px; }
+  .matrix .cell {
+    width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    font: 9px/1 ui-monospace, monospace;
+  }
+
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<h1>ansil16 calibrator</h1>
+<p class="subtitle">
+  Triad-based calibration: for each trial, pick the swatch most different from the other two.
+  ~60 trials, then the optimizer nudges slots to maximize discriminability + group structure +
+  legibility within constraint boxes around the seed palette.
+</p>
+
+<div class="section">
+  <h2>Seed palette: luv-rainbow-light</h2>
+  <div id="seed-swatches" class="swatch-row"></div>
+</div>
+
+<div class="section" id="trial-section">
+  <h2>Trial <span id="trial-num">1</span> of <span id="trial-target">60</span></h2>
+  <div class="trial">
+    <div class="prompt">Which is <em>most different</em> from the other two?</div>
+    <div class="triad" id="triad"></div>
+    <div class="hint">Click a swatch or press <kbd>1</kbd>/<kbd>2</kbd>/<kbd>3</kbd> or <kbd>j</kbd>/<kbd>k</kbd>/<kbd>l</kbd></div>
+  </div>
+  <div class="progress" style="margin-top: 12px;">
+    <span>Trials: <strong id="prog-trials">0</strong></span>
+    <span>Closest pair: <strong id="prog-pair">—</strong></span>
+    <span>Min ΔE: <strong id="prog-min">—</strong></span>
+  </div>
+  <div style="margin-top: 12px;">
+    <button class="secondary" id="skip-to-optimizer">Skip to optimizer →</button>
+  </div>
+</div>
+
+<div class="section hidden" id="optimizing-section">
+  <h2>Optimizing…</h2>
+  <pre id="opt-log"></pre>
+</div>
+
+<div class="section hidden" id="results-section">
+  <h2>Calibrated palette</h2>
+  <div class="results">
+    <div>
+      <h3>Original</h3>
+      <div id="orig-swatches" class="swatch-row"></div>
+    </div>
+    <div>
+      <h3>Calibrated</h3>
+      <div id="new-swatches" class="swatch-row"></div>
+    </div>
+  </div>
+  <div class="download-links">
+    <a id="download-conf" href="#">Download .conf</a>
+    <a id="download-sidecar" href="#">Download calibration.json</a>
+  </div>
+  <div style="margin-top: 16px;">
+    <h3 style="margin: 12px 0 6px 0;">Loss components (final)</h3>
+    <pre id="final-components"></pre>
+  </div>
+</div>
+
+<script src="lib/util.js"></script>
+<script src="lib/colorspace.js"></script>
+<script src="lib/oklab.js"></script>
+<script src="lib/cielab.js"></script>
+<script src="lib/jzazbz.js"></script>
+<script src="lib/conf.js"></script>
+<script src="lib/palette.js"></script>
+<script src="lib/metrics.js"></script>
+<script src="lib/calibrate-loss.js"></script>
+<script src="lib/calibrate-optimize.js"></script>
+<script src="lib/calibrate-triad.js"></script>
+
+<script>
+(function () {
+  const cal = ansil16.calibrate;
+  const P = ansil16.palette;
+  const conf = ansil16.conf;
+
+  // ----- Seed palette (luv-rainbow-light, inline for no-server use) -----
+  const SEED_HEX = {
+    bg: '#FFFFFF', fg: '#000000',
+    c0: '#B9B9B9', c8: '#919191', c7: '#5E5E5E', c15: '#3B3B3B',
+    c1: '#D93668', c2: '#63810B', c3: '#B66027',
+    c4: '#3279C5', c5: '#AF4FBE', c6: '#1D857B',
+    c9: '#A50445', c10: '#445A09', c11: '#82400F',
+    c12: '#035493', c13: '#852693', c14: '#085D56',
+  };
+  const SEED_NAME = 'luv-rainbow-light';
+
+  // The 12 chromatic slots in canonical order: c1..c6 (std), c9..c14 (brt)
+  const CHROMATIC = ['c1','c2','c3','c4','c5','c6','c9','c10','c11','c12','c13','c14'];
+
+  // ----- State -----
+  // CIELAB backend — per user preference (CIELAB L* matches their subjective
+  // luminance better than OKLab or Jzazbz). The lib's normalized L ∈ [0, 1]
+  // means the loss's defaults (legibFloor=0.15 etc.) carry over.
+  let pal = P.make('cielab');
+  pal.loadHex(SEED_HEX);
+  // Tier labels for the 12 chromatic slots: first 6 = std, last 6 = brt.
+  // Drives the cross-tier sampling in the triad mix.
+  const TIER_LABELS = [0,0,0,0,0,0, 1,1,1,1,1,1];
+  const triadState = cal.makeTriadState(CHROMATIC.length, {
+    alpha: 0.4,
+    tierLabels: TIER_LABELS,
+    // Mix: 55% weighted (gradient signal) + 20% cross-tier (C2 validation
+    // + visual variety) + 15% asymptote (max-info ambiguous triads) +
+    // 10% easy-control (data-quality check + perception reset)
+    mix: { weighted: 0.55, crossTier: 0.20, asymptote: 0.15, easyControl: 0.10 },
+    cooldown: 2,
+  });
+  let trialCount = 0;
+  const TRIAL_TARGET = 60;
+  let trialLog = []; // [{triad: [3 slot indices], picked: 0|1|2, type, ts}]
+  let currentTriad = null;
+  let currentTriadType = null;
+
+  // ----- Rendering helpers -----
+  function renderSwatches(containerId, hexMap) {
+    const c = document.getElementById(containerId);
+    c.innerHTML = '';
+    for (const k of P.ALL_SLOTS) {
+      const hex = hexMap[k];
+      const el = document.createElement('div');
+      el.className = 'swatch';
+      el.style.background = hex;
+      el.title = k + ' ' + hex;
+      const label = document.createElement('span');
+      label.className = 'label';
+      label.textContent = k;
+      el.appendChild(label);
+      c.appendChild(el);
+    }
+  }
+
+  function chromaticIdxToSlot(i) { return CHROMATIC[i]; }
+  function chromaticIdxToCoord(i) {
+    if (i < 6) return pal.state.std.dots[i];
+    return pal.state.brt.dots[i - 6];
+  }
+
+  function chromaticDist(i, j) {
+    const a = chromaticIdxToCoord(i);
+    const b = chromaticIdxToCoord(j);
+    const dL = a.L - b.L, da = a.a - b.a, db = a.b - b.b;
+    const base = Math.sqrt(dL * dL + da * da + db * db);
+    return triadState.effectiveDeltaE(i, j, base);
+  }
+
+  function currentMinPair() {
+    let minD = Infinity, p = null;
+    for (let i = 0; i < CHROMATIC.length; i++) {
+      for (let j = i + 1; j < CHROMATIC.length; j++) {
+        const d = chromaticDist(i, j);
+        if (d < minD) { minD = d; p = [i, j]; }
+      }
+    }
+    return { min: minD, pair: p };
+  }
+
+  function renderTriad(triad) {
+    const c = document.getElementById('triad');
+    c.innerHTML = '';
+    const hex = pal.toHex();
+    for (let i = 0; i < 3; i++) {
+      const slot = chromaticIdxToSlot(triad[i]);
+      const el = document.createElement('div');
+      el.className = 'triad-cell';
+      el.style.background = hex[slot];
+      el.dataset.idx = i;
+      el.innerHTML = '<span class="key">' + (i + 1) + '</span>';
+      el.addEventListener('click', () => recordPick(i));
+      c.appendChild(el);
+    }
+  }
+
+  function updateProgress() {
+    document.getElementById('prog-trials').textContent = trialCount;
+    const m = currentMinPair();
+    document.getElementById('prog-pair').textContent =
+      chromaticIdxToSlot(m.pair[0]) + ' / ' + chromaticIdxToSlot(m.pair[1]);
+    document.getElementById('prog-min').textContent = m.min.toFixed(3);
+  }
+
+  function nextTrial() {
+    if (trialCount >= TRIAL_TARGET) {
+      runOptimizer();
+      return;
+    }
+    trialCount++;
+    document.getElementById('trial-num').textContent = trialCount;
+    document.getElementById('trial-target').textContent = TRIAL_TARGET;
+    const sample = triadState.sampleTriad(chromaticDist);
+    currentTriad = sample.triad;
+    currentTriadType = sample.type;
+    renderTriad(currentTriad);
+    updateProgress();
+  }
+
+  function recordPick(idx) {
+    if (!currentTriad) return;
+    triadState.recordResponse(currentTriad, idx);
+    trialLog.push({
+      triad: currentTriad.slice(),
+      picked: idx,
+      type: currentTriadType,
+      ts: Date.now(),
+    });
+    currentTriad = null;
+    currentTriadType = null;
+    nextTrial();
+  }
+
+  // ----- Optimizer driver -----
+  function runOptimizer() {
+    document.getElementById('trial-section').classList.add('hidden');
+    document.getElementById('optimizing-section').classList.remove('hidden');
+    const log = document.getElementById('opt-log');
+
+    // Defer to next frame so DOM updates render
+    setTimeout(() => {
+      const lines = [];
+      const lossOpts = {
+        seedHex: SEED_HEX,
+        effectiveDE: (i, j, d) => triadState.effectiveDeltaE(i, j, d),
+      };
+      const result = cal.optimize(pal, cal.composeLoss, {
+        maxIters: 80,
+        step: 0.02,
+        minStep: 0.001,
+        lossOpts: lossOpts,
+        onProgress: (p) => {
+          if (p.iter % 5 === 0 || p.iter < 5) {
+            lines.push('iter ' + String(p.iter).padStart(3) +
+              '  step=' + p.step.toFixed(4) +
+              '  loss=' + p.loss.toFixed(4));
+          }
+        },
+      });
+      log.textContent = lines.join('\n');
+      showResults(result);
+    }, 16);
+  }
+
+  function showResults(result) {
+    document.getElementById('optimizing-section').classList.add('hidden');
+    document.getElementById('results-section').classList.remove('hidden');
+
+    renderSwatches('orig-swatches', SEED_HEX);
+    renderSwatches('new-swatches', result.paletteHex);
+
+    document.getElementById('final-components').textContent =
+      JSON.stringify(result.finalComponents, null, 2);
+
+    // Build .conf download
+    const confText = buildConfText(result.paletteHex);
+    const confBlob = new Blob([confText], { type: 'text/plain' });
+    document.getElementById('download-conf').href = URL.createObjectURL(confBlob);
+    document.getElementById('download-conf').download = SEED_NAME + '-calibrated.conf';
+
+    // Build sidecar JSON
+    const sidecar = {
+      seed_palette: SEED_NAME,
+      seed_hex: SEED_HEX,
+      calibrated_hex: result.paletteHex,
+      viewing_condition: {
+        note: 'v1 uses OKLab without explicit viewing-condition params; bg=palette bg, surround=average implied.',
+      },
+      backend: pal.state.backend,
+      trial_count: trialCount,
+      trial_log: trialLog,
+      optimizer_history: result.history,
+      final_loss: result.finalLoss,
+      final_components: result.finalComponents,
+      triad_state: triadState.getState(),
+      timestamp: new Date().toISOString(),
+    };
+    const sidecarBlob = new Blob([JSON.stringify(sidecar, null, 2)], { type: 'application/json' });
+    document.getElementById('download-sidecar').href = URL.createObjectURL(sidecarBlob);
+    document.getElementById('download-sidecar').download = SEED_NAME + '-calibration.json';
+  }
+
+  function buildConfText(hexMap) {
+    const lines = [
+      '# ansil16 palette: ' + SEED_NAME + ' (calibrated)',
+      '# Tweaked from ' + SEED_NAME + ' via designer/calibrate.html on ' + new Date().toISOString().slice(0, 10),
+      '',
+      'bg = ' + hexMap.bg,
+      'fg = ' + hexMap.fg,
+      '',
+      '# grayscale ramp',
+      'c0  = ' + hexMap.c0,
+      'c8  = ' + hexMap.c8,
+      'c7  = ' + hexMap.c7,
+      'c15 = ' + hexMap.c15,
+      '',
+      '# standard row',
+    ];
+    for (let i = 1; i <= 6; i++) lines.push('c' + i + ' = ' + hexMap['c' + i]);
+    lines.push('', '# emphasis row');
+    for (let i = 9; i <= 14; i++) lines.push('c' + i + ' = ' + hexMap['c' + i]);
+    return lines.join('\n') + '\n';
+  }
+
+  // ----- Wire up controls -----
+  document.getElementById('skip-to-optimizer').addEventListener('click', () => {
+    runOptimizer();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (!currentTriad) return;
+    const k = e.key;
+    if (k === '1' || k === 'j' || k === 'J') recordPick(0);
+    else if (k === '2' || k === 'k' || k === 'K') recordPick(1);
+    else if (k === '3' || k === 'l' || k === 'L') recordPick(2);
+  });
+
+  // ----- Init -----
+  // Page bg matches the palette bg — calibration happens in the rendering
+  // context the palette will actually be used in. For dark palettes (luv-
+  // rainbow-dark, etc.) chrome text also flips.
+  function applyPaletteContext() {
+    const bgHex = SEED_HEX.bg;
+    document.body.style.background = bgHex;
+    const bgLum = ansil16.util.relativeLuminance(bgHex);
+    const isLightBg = bgLum > 0.5;
+    document.documentElement.style.setProperty('--fg', isLightBg ? '#1a1a1a' : '#eaeaea');
+    document.documentElement.style.setProperty('--muted', isLightBg ? '#666' : '#999');
+    document.documentElement.style.setProperty('--border', isLightBg ? '#ddd' : '#333');
+    // Trial card bg: a slight tint off the palette bg, so the card boundary
+    // is visible without distorting the swatch context.
+    const cardBg = isLightBg ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.04)';
+    document.documentElement.style.setProperty('--card-bg', cardBg);
+  }
+
+  applyPaletteContext();
+  renderSwatches('seed-swatches', SEED_HEX);
+  nextTrial();
+})();
+</script>
+</body>
+</html>
