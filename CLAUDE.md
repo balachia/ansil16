@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Issue tracking — chainlink
+
+This repo uses [chainlink](https://github.com/dollspace-gay/chainlink) (local SQLite-backed issue tracker, binary at `~/.cargo/bin/chainlink`). State lives in `.chainlink/issues.db`, committed to git so all agents in this repo share it.
+
+- `chainlink list` — see all open issues
+- `chainlink show <id>` — full description, comments, related links
+- `chainlink next` — priority-ranked suggestion
+- `chainlink create "title" -d "desc" -l <label> -p <priority>` — file a new one
+- `chainlink session start` / `chainlink session end --handoff "..."` — bracket a working session
+
+File issues for deferred ideas, post-session followups, anything worth coming back to (don't just trust conversation memory). Common labels: `idea`, `bug`, `ui`, `designer`, `metrics`.
+
 ## Project
 
 `ansil16` is a 16-color ANSI palette tool. The user has hand-designed light + dark CIELUV palettes ("luv-rainbow") and previously applied them with a small shell script (`~/.local/bin/theme`) that converted xrdb files to OSC escape sequences. This project replaces and cleans up that workflow.
