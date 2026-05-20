@@ -89,26 +89,53 @@
       loadHex(snapshot);
     }
 
-    // Set a row's anchor L AND snap all dots in that row to it. This is the
-    // explicit "harmonize the row" action — distinct from a single-dot drag.
+    // Set a row's anchor L. SHIFTS each dot's L by the same delta so any
+    // per-slot residuals (dot.L - old anchor) are preserved. Dragging the
+    // row L slider feels like "move everything brighter/darker together".
+    // For "harmonize all to anchor" use harmonizeRowL instead.
     function setRowL(rowKey, newL) {
+      const row = state[rowKey];
+      const delta = newL - row.L;
+      row.L = newL;
+      row.dots = row.dots.map(d => ({
+        L: Math.max(0, Math.min(1, d.L + delta)),
+        a: d.a,
+        b: d.b,
+      }));
+    }
+
+    // Explicit "snap all dots in row to anchor L" action. Resets residuals.
+    function harmonizeRowL(rowKey) {
       const b = getBackend();
       const row = state[rowKey];
-      row.L = newL;
       row.dots = row.dots.map(d => {
-        const clipped = root.colorspace.clipToGamut(b, newL, d.a, d.b);
-        return { L: newL, a: clipped.a, b: clipped.b };
+        const clipped = root.colorspace.clipToGamut(b, row.L, d.a, d.b);
+        return { L: row.L, a: clipped.a, b: clipped.b };
       });
     }
 
-    // Drag a single dot to a new (a, b). The dot snaps to the row's current
-    // anchor L (you're editing the displayed gamut slice). Other dots
-    // untouched. Result is clipped to gamut.
+    // Drag a single dot. PRESERVES the dot's current L (any residual stays);
+    // only (a, b) move. Gamut clip is at the dot's own L, not the anchor.
     function moveDot(rowKey, idx, a, bb) {
       const b = getBackend();
-      const row = state[rowKey];
-      const clipped = root.colorspace.clipToGamut(b, row.L, a, bb);
-      row.dots[idx] = { L: row.L, a: clipped.a, b: clipped.b };
+      const dot = state[rowKey].dots[idx];
+      const clipped = root.colorspace.clipToGamut(b, dot.L, a, bb);
+      dot.a = clipped.a;
+      dot.b = clipped.b;
+    }
+
+    // Adjust a single dot's L by `delta`. Optional `bounds` clamps the new L
+    // to [bounds.min, bounds.max] (e.g. anchor ± 0.05 for residual cap).
+    // (a, b) preserved — not re-clipped to new L's gamut (renderer handles
+    // out-of-gamut by clamping the sRGB output).
+    function nudgeDotL(rowKey, idx, delta, bounds) {
+      const dot = state[rowKey].dots[idx];
+      let newL = dot.L + delta;
+      if (bounds) {
+        newL = Math.max(bounds.min, Math.min(bounds.max, newL));
+      }
+      newL = Math.max(0, Math.min(1, newL));
+      dot.L = newL;
     }
 
     // Update one of the gray slots' L. We deliberately do NOT re-clip (a, b)
@@ -134,7 +161,9 @@
       toHex: toHex,
       setBackend: setBackend,
       setRowL: setRowL,
+      harmonizeRowL: harmonizeRowL,
       moveDot: moveDot,
+      nudgeDotL: nudgeDotL,
       setGrayL: setGrayL,
       setGrayTint: setGrayTint,
     };

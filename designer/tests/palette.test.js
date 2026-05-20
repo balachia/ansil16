@@ -75,35 +75,60 @@
     }
   });
 
-  test('palette.setRowL: snaps all dots to new L; preserves hue direction', () => {
+  test('palette.setRowL: shifts all dots by delta; preserves residuals', () => {
     const p = ansil16.palette.make('oklab');
     p.loadHex(LUV_RAINBOW_DARK);
-    const beforeAngles = p.state.std.dots.map(d => Math.atan2(d.b, d.a));
+    const beforeLs = p.state.std.dots.map(d => d.L);
+    const oldAnchor = p.state.std.L;
     p.setRowL('std', 0.4);
-    const afterAngles = p.state.std.dots.map(d => Math.atan2(d.b, d.a));
+    const delta = 0.4 - oldAnchor;
+    // each dot should have shifted by exactly the delta
     for (let i = 0; i < 6; i++) {
-      const diff = Math.abs(beforeAngles[i] - afterAngles[i]);
-      if (diff > 1e-6) throw new Error(`dot ${i} hue drifted: ${diff}`);
-    }
-    // all dots should now share the new L
-    for (let i = 0; i < 6; i++) {
-      assertClose(p.state.std.dots[i].L, 0.4, 1e-9, `dot ${i} L`);
+      assertClose(p.state.std.dots[i].L, beforeLs[i] + delta, 1e-9, `dot ${i} shifted`);
     }
     assertClose(p.state.std.L, 0.4, 1e-9, 'anchor L');
   });
 
-  test('palette.moveDot: snaps dot to anchor L; other dots unchanged', () => {
+  test('palette.harmonizeRowL: snaps all dots to anchor L', () => {
     const p = ansil16.palette.make('oklab');
     p.loadHex(LUV_RAINBOW_DARK);
-    const anchor = p.state.std.L;
-    const otherLsBefore = [0,2,3,4,5].map(i => p.state.std.dots[i].L);
+    // First nudge a dot so its L differs from anchor
+    p.nudgeDotL('std', 0, 0.01);
+    if (Math.abs(p.state.std.dots[0].L - p.state.std.L) < 1e-9) {
+      throw new Error('expected nudge to create L deviation');
+    }
+    p.harmonizeRowL('std');
+    for (let i = 0; i < 6; i++) {
+      assertClose(p.state.std.dots[i].L, p.state.std.L, 1e-9, `dot ${i} L`);
+    }
+  });
+
+  test('palette.moveDot: preserves dot L (no snap to anchor); other dots unchanged', () => {
+    const p = ansil16.palette.make('oklab');
+    p.loadHex(LUV_RAINBOW_DARK);
+    const beforeLs = p.state.std.dots.map(d => d.L);
     p.moveDot('std', 1, 0.1, 0.1);
-    // dot 1 should be at anchor L
-    assertClose(p.state.std.dots[1].L, anchor, 1e-9, 'dragged dot L');
+    // dot 1's L should be unchanged
+    assertClose(p.state.std.dots[1].L, beforeLs[1], 1e-9, 'dragged dot L preserved');
     // other dots untouched
-    [0,2,3,4,5].forEach((i, idx) => {
-      assertClose(p.state.std.dots[i].L, otherLsBefore[idx], 1e-9, `untouched dot ${i}`);
+    [0,2,3,4,5].forEach(i => {
+      assertClose(p.state.std.dots[i].L, beforeLs[i], 1e-9, `untouched dot ${i}`);
     });
+  });
+
+  test('palette.nudgeDotL: adjusts L; clamps to bounds when given', () => {
+    const p = ansil16.palette.make('oklab');
+    p.loadHex(LUV_RAINBOW_DARK);
+    const startL = p.state.std.dots[0].L;
+    // Small nudge within bounds
+    p.nudgeDotL('std', 0, 0.01, { min: startL - 0.05, max: startL + 0.05 });
+    assertClose(p.state.std.dots[0].L, startL + 0.01, 1e-9);
+    // Nudge beyond max should clamp
+    p.nudgeDotL('std', 0, 0.1, { min: startL - 0.05, max: startL + 0.05 });
+    assertClose(p.state.std.dots[0].L, startL + 0.05, 1e-9, 'clamped to max');
+    // No bounds — clamps only to [0, 1]
+    p.nudgeDotL('std', 0, -2.0);
+    assertClose(p.state.std.dots[0].L, 0, 1e-9, 'clamped to 0');
   });
 
   test('palette.moveDot: result is in gamut', () => {

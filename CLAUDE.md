@@ -10,9 +10,19 @@ This repo uses [chainlink](https://github.com/dollspace-gay/chainlink) (local SQ
 - `chainlink show <id>` — full description, comments, related links
 - `chainlink next` — priority-ranked suggestion
 - `chainlink create "title" -d "desc" -l <label> -p <priority>` — file a new one
-- `chainlink session start` / `chainlink session end --handoff "..."` — bracket a working session
+- `chainlink session start` / `chainlink session end --notes "..."` — bracket a working session
 
-File issues for deferred ideas, post-session followups, anything worth coming back to (don't just trust conversation memory). Common labels: `idea`, `bug`, `ui`, `designer`, `metrics`.
+Common labels: `idea`, `bug`, `ui`, `designer`, `metrics`.
+
+## Where things live (knowledge taxonomy)
+
+Three distinct homes for non-code information, chosen by what kind of thing it is:
+
+- **Chainlink** (`.chainlink/issues.db`): *actionable work* — bugs, features, ideas that have a natural "done" state. If you close it, what does that mean? If "I built/fixed/decided that", it's an issue.
+- **`notes/*.md`** (in repo, git-tracked): *durable project knowledge* — design rules, findings, research, decisions. Things that *inform* future work but don't get "done". Visible to all agents via filesystem.
+- **Memory** (`~/.claude/projects/.../memory/`): *user-specific facts and preferences* — not project state. The user's color vision results, environment, workflow preferences. Auto-loaded per-conversation.
+
+When you discover something cross-cutting, ask: does it close, does it inform, or is it about the user? Place accordingly. Don't pile findings into chainlink — they'll sit open forever and clutter the "what to work on" view.
 
 ## Project
 

@@ -61,6 +61,7 @@
   }
   .swatch .swatch-num { font-size: 11px; font-weight: 600; line-height: 1; }
   .swatch .swatch-hex { font-size: 8px; opacity: 0.6; line-height: 1; letter-spacing: -0.5px; }
+  .swatch .swatch-residual { font-size: 8px; opacity: 0.75; line-height: 1; font-weight: 600; }
   .swatch .swatch-name { font-size: 9px; opacity: 0.75; line-height: 1; align-self: flex-end; }
   .swatch.dark-text { color: rgba(0,0,0,0.78); }
   .swatch.light-text { color: rgba(255,255,255,0.92); }
@@ -558,7 +559,7 @@
     const el = document.createElement('div');
     el.className = 'swatch';
     el.dataset.key = 'c' + i;
-    el.innerHTML = `<span class="swatch-num">${i}</span><span class="swatch-hex"></span><span class="swatch-name">${SLOT_NAMES[i]}</span>`;
+    el.innerHTML = `<span class="swatch-num">${i}</span><span class="swatch-hex"></span><span class="swatch-residual"></span><span class="swatch-name">${SLOT_NAMES[i]}</span>`;
     el.title = `c${i} — ${SLOT_NAMES[i]}`;
     swatchGrid.appendChild(el);
   }
@@ -735,6 +736,16 @@
     for (const k of paletteLib.ALL_SLOTS) {
       root.style.setProperty('--p-' + k, hex[k]);
     }
+    // Per-slot L residuals (chromatic only): how far the dot's L sits from
+    // its row anchor. Useful when subjective luminance doesn't match the
+    // backend's L mapping — user nudges to compensate.
+    const residuals = {};
+    paletteLib.STD_SLOTS.forEach((k, i) => {
+      residuals[k] = palette.state.std.dots[i].L - palette.state.std.L;
+    });
+    paletteLib.BRT_SLOTS.forEach((k, i) => {
+      residuals[k] = palette.state.brt.dots[i].L - palette.state.brt.L;
+    });
     document.querySelectorAll('.swatch').forEach(el => {
       const k = el.dataset.key;
       el.style.background = hex[k];
@@ -743,6 +754,16 @@
       el.classList.toggle('light-text', !dark);
       const hexEl = el.querySelector('.swatch-hex');
       if (hexEl) hexEl.textContent = hex[k];
+      const resEl = el.querySelector('.swatch-residual');
+      if (resEl) {
+        const r = residuals[k];
+        if (r != null && Math.abs(r) >= 0.0005) {
+          const pp = (r * 100).toFixed(1);
+          resEl.textContent = (r > 0 ? 'L+' : 'L') + pp;
+        } else {
+          resEl.textContent = '';
+        }
+      }
     });
   }
 
@@ -873,6 +894,16 @@
     if (g.L < 0.55) div.classList.add('light-label');
     div.title = slot;
     div.addEventListener('pointerdown', e => startDragGray(e, slot));
+    // Scroll on the gray dot adjusts its L directly (no anchor concept).
+    div.addEventListener('wheel', e => {
+      e.preventDefault();
+      const raw = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+      const step = e.shiftKey ? 0.0005 : 0.005;
+      const delta = raw < 0 ? +step : -step;
+      const g = palette.state.grays[slot];
+      g.L = Math.max(0, Math.min(1, g.L + delta));
+      rerender();
+    }, { passive: false });
     wrap.appendChild(div);
   }
 
@@ -893,6 +924,16 @@
         div.textContent = slots[i].slice(1);
         if (L < 0.55) div.classList.add('light-label');
         div.addEventListener('pointerdown', e => startDrag(e, rowKey, i));
+        // Scroll = nudge this dot's L by ±0.001 (0.1 percentage point).
+        // Capped at ±0.05 from the row anchor (the "residual").
+        div.addEventListener('wheel', e => {
+          e.preventDefault();
+          const raw = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+          const delta = raw < 0 ? +0.001 : -0.001;
+          const anchor = palette.state[rowKey].L;
+          palette.nudgeDotL(rowKey, i, delta, { min: anchor - 0.05, max: anchor + 0.05 });
+          rerender();
+        }, { passive: false });
       }
       wrap.appendChild(div);
     });
