@@ -111,13 +111,14 @@
       row.dots[idx] = { L: row.L, a: clipped.a, b: clipped.b };
     }
 
-    // Update one of the gray slots' L, optionally adjusting (a, b) to stay in gamut.
+    // Update one of the gray slots' L. We deliberately do NOT re-clip (a, b)
+    // to the new L's gamut — that would silently rotate the user's tint when
+    // scrolling L (visible as "L and tint move together"). If the tint is
+    // out-of-gamut at the new L, labToHex clamps the rendered hex while the
+    // stored (a, b) intent is preserved across further L changes. To deliberately
+    // tint within the new gamut, use setGrayTint or drag the dot on the canvas.
     function setGrayL(slot, newL) {
-      const b = getBackend();
-      const g = state.grays[slot];
-      g.L = newL;
-      const clipped = root.colorspace.clipToGamut(b, g.L, g.a, g.b);
-      g.a = clipped.a; g.b = clipped.b;
+      state.grays[slot].L = newL;
     }
 
     function setGrayTint(slot, a, bb) {

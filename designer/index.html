@@ -154,15 +154,17 @@
     background: transparent;
     border: 0;
     color: var(--ui-dim);
-    padding: 4px 14px;
+    padding: 4px 10px;
     font-size: 12px;
     cursor: pointer;
     border-radius: 3px;
+    font-family: ui-monospace, monospace;
   }
   .row-toggle button.active {
     background: var(--ui-panel);
     color: var(--ui-text);
   }
+  .row-toggle.gray-toggle button { padding: 4px 8px; min-width: 22px; }
   .L-stack { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 12px; font-size: 11px; color: var(--ui-dim); }
   .L-stack .L-line { display: flex; align-items: center; gap: 8px; }
   .L-stack .L-line.dim { opacity: 0.6; }
@@ -206,7 +208,7 @@
     width: 130px;
     gap: 4px;
   }
-  .gray-row .tint-cell .tint-slider { /* width set dynamically in JS */ }
+  .gray-row .tint-cell .tint-slider { flex: 1; width: auto; }
   .gray-row .tint-label { font: 10px ui-monospace, monospace; color: var(--ui-dim); width: 8px; }
 
   /* toolbar */
@@ -409,15 +411,23 @@
 
     <h2>chromatic rows (c1–c6 standard, c9–c14 bright)</h2>
     <div class="row-block">
-      <div class="row-head" style="justify-content: flex-start;">
-        <span style="margin-right: 8px;">editing:</span>
+      <div class="row-head" style="justify-content: flex-start; flex-wrap: wrap; gap: 8px;">
+        <span>editing:</span>
         <div class="row-toggle" id="row-toggle">
           <button data-row="std" class="active">standard</button>
           <button data-row="brt">bright</button>
         </div>
-        <label style="margin-left: 16px; font-size: 11px; cursor: pointer;">
+        <div class="row-toggle gray-toggle" id="gray-toggle">
+          <button data-row="bg">bg</button>
+          <button data-row="fg">fg</button>
+          <button data-row="c0">0</button>
+          <button data-row="c8">8</button>
+          <button data-row="c7">7</button>
+          <button data-row="c15">15</button>
+        </div>
+        <label style="font-size: 11px; cursor: pointer;">
           <input type="checkbox" id="show-other-gamut" checked style="vertical-align: middle;">
-          <span style="vertical-align: middle;">show other row's gamut outline</span>
+          <span style="vertical-align: middle;">other-row gamut outline</span>
         </label>
       </div>
       <div class="L-stack">
@@ -454,7 +464,7 @@
       </div>
       <div class="hint" style="margin-top: 6px;">
         profile axes in × JND. red line = pair below 1× JND (indistinguishable).
-        amber = below target. nominal JND: OKLab ≈ 0.02, normalized CIELAB ≈ 0.023.
+        amber = below target. nominal JND: OKLab ≈ 0.02 · CIELAB ≈ 0.023 · Jzazbz ≈ 0.0017.
       </div>
     </div>
 
@@ -475,6 +485,7 @@
 <script src="lib/colorspace.js"></script>
 <script src="lib/oklab.js"></script>
 <script src="lib/cielab.js"></script>
+<script src="lib/jzazbz.js"></script>
 <script src="lib/conf.js"></script>
 <script src="lib/palette.js"></script>
 <script src="lib/metrics.js"></script>
@@ -511,6 +522,7 @@
   const THEME_KEY = 'ansil16-designer-theme';
   const palette = paletteLib.make('oklab');
   let activeRow = 'std'; // 'std' | 'brt'
+  let selectedGray = null; // null or one of GRAY_SLOTS — overlay + draggable
   let showOtherGamut = true;
 
   // Theme-aware canvas colors. Pulled at paint time so toggle takes effect.
@@ -525,6 +537,14 @@
       dotBorder: light ? '#222'    : '#fff',
       outline:   light ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.4)',
       outOfGamutGray: light ? 218 : 38,
+      // Pinned-pair line: high contrast against both colored gamut and out-of-
+      // gamut gray. Dark theme yellow on dark gray, light theme dark-orange
+      // on light gray.
+      pinnedLine: light ? '#8a4a00' : '#ffd83a',
+      pinnedLineHalo: light ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.55)',
+      // Selected gray's gamut perimeter: gray-toned dots, distinct from the
+      // other-row dashed white/black outline.
+      selectedGrayOutline: light ? 'rgba(0,0,0,0.68)' : 'rgba(240,240,240,0.78)',
     };
   }
 
@@ -671,17 +691,16 @@
   }
 
   // Draw dashed line on canvas between two slots' positions for each pinned pair.
+  // Drawn with a halo (thicker contrasting underlay) so the line stays legible
+  // when it crosses both the colored gamut and the out-of-gamut gray region.
   function paintPinnedPairs() {
     if (pinnedPairs.size === 0) return;
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const backend = colorspace.get(palette.state.backend);
     const AB = backend.AB_range;
+    const tc = themeColors();
     ctx.save();
-    ctx.strokeStyle = '#ffd83a';
-    ctx.lineWidth = 1.6;
-    ctx.setLineDash([5, 4]);
-    ctx.globalAlpha = 0.85;
     for (const key of pinnedPairs) {
       const [fg, bg] = key.split('|');
       const fgAb = slotAb(fg);
@@ -689,10 +708,24 @@
       if (!fgAb || !bgAb) continue;
       const [x1, y1] = abToPx(fgAb.a, fgAb.b, AB);
       const [x2, y2] = abToPx(bgAb.a, bgAb.b, AB);
+      // halo underlay
+      ctx.strokeStyle = tc.pinnedLineHalo;
+      ctx.lineWidth = 3.5;
+      ctx.setLineDash([]);
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
       ctx.stroke();
+      // dashed line on top
+      ctx.strokeStyle = tc.pinnedLine;
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([5, 4]);
+      ctx.globalAlpha = 0.95;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
     }
     ctx.restore();
   }
@@ -713,9 +746,9 @@
     });
   }
 
-  // Paint the gamut at the active row's L. Then optionally overlay the other
-  // row's gamut boundary as a dashed outline (so you can see what shape the
-  // *other* L slice has without leaving this view).
+  // Paint the gamut at the active chromatic row's L. Overlays:
+  //   - other chromatic row's gamut outline (toggleable, dashed)
+  //   - selected gray's gamut outline (if any, accent-colored)
   function paintCanvas() {
     const canvas = document.getElementById('canvas');
     const backend = colorspace.get(palette.state.backend);
@@ -746,20 +779,23 @@
 
     if (showOtherGamut) {
       const otherRow = activeRow === 'std' ? 'brt' : 'std';
-      paintGamutOutline(ctx, backend, palette.state[otherRow].L, AB);
+      paintGamutOutline(ctx, backend, palette.state[otherRow].L, AB, themeColors().outline);
+    }
+    if (selectedGray) {
+      const grayL = palette.state.grays[selectedGray].L;
+      paintGamutOutline(ctx, backend, grayL, AB, themeColors().selectedGrayOutline, [2, 4]);
     }
   }
 
   // Sample around hue 0..2π, binary-search max chroma per direction at the
   // given L, and stroke the closed loop. ~60 samples × 24 iters = ~1500
   // inGamut calls; cheap.
-  function paintGamutOutline(ctx, backend, L, AB) {
+  function paintGamutOutline(ctx, backend, L, AB, strokeColor, dashPattern) {
     const N = 64;
     const points = [];
     for (let i = 0; i < N; i++) {
       const h = (i / N) * 2 * Math.PI;
       const dirA = Math.cos(h), dirB = Math.sin(h);
-      // start with a small step we know is in gamut (origin at this L)
       if (!backend.inGamut(L, 0, 0)) continue;
       let lo = 0, hi = AB * 2;
       for (let it = 0; it < 24; it++) {
@@ -771,9 +807,9 @@
     }
     if (points.length < 3) return;
     ctx.save();
-    ctx.strokeStyle = themeColors().outline;
+    ctx.strokeStyle = strokeColor || themeColors().outline;
     ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 4]);
+    ctx.setLineDash(dashPattern || [4, 4]);
     ctx.beginPath();
     const [x0, y0] = abToPx(points[0][0], points[0][1], AB);
     ctx.moveTo(x0, y0);
@@ -786,23 +822,30 @@
     ctx.restore();
   }
 
-  // Paint dots. Grayscale slots (bg/fg/c0/c7/c8/c15) render as small ghosts
-  // for reference — useful for spotting chromatic-vs-gray collisions. Then
-  // the inactive chromatic row as larger ghosts. Active row dots on top,
-  // full-size and draggable.
+  // Paint dots. Active chromatic row is always primary (draggable, full-size).
+  // Other chromatic row ghosted. Grays all ghosted EXCEPT the selected gray
+  // (if any), which is drawn full-size + draggable on top.
   function paintAllDots(hex) {
     const wrap = document.getElementById('canvas-wrap');
     wrap.querySelectorAll('.dot').forEach(d => d.remove());
-    drawGrayDots(wrap, hex);
+
+    // grays (excluding the selected one if any)
+    drawGrayDots(wrap, hex, selectedGray);
+    // inactive chromatic row as ghosts
     const ghostRow = activeRow === 'std' ? 'brt' : 'std';
     drawRowDots(wrap, ghostRow, hex, true);
+    // active chromatic row, draggable
     drawRowDots(wrap, activeRow, hex, false);
+    // selected gray on top, draggable
+    if (selectedGray) drawActiveGray(wrap, hex, selectedGray);
   }
 
-  function drawGrayDots(wrap, hex) {
+  // Draw all gray slots as ghosts, optionally excluding one (the active one).
+  function drawGrayDots(wrap, hex, excludeSlot) {
     const backend = colorspace.get(palette.state.backend);
     const AB = backend.AB_range;
     for (const slot of paletteLib.GRAY_SLOTS) {
+      if (slot === excludeSlot) continue;
       const g = palette.state.grays[slot];
       const [x, y] = abToPx(g.a, g.b, AB);
       const div = document.createElement('div');
@@ -810,9 +853,27 @@
       div.style.left = x + 'px';
       div.style.top = y + 'px';
       div.style.background = hex[slot];
-      div.title = slot; // hover tooltip since they cluster
+      div.title = slot;
       wrap.appendChild(div);
     }
+  }
+
+  // Active gray as a full-size, draggable dot with a label.
+  function drawActiveGray(wrap, hex, slot) {
+    const backend = colorspace.get(palette.state.backend);
+    const AB = backend.AB_range;
+    const g = palette.state.grays[slot];
+    const [x, y] = abToPx(g.a, g.b, AB);
+    const div = document.createElement('div');
+    div.className = 'dot';
+    div.style.left = x + 'px';
+    div.style.top = y + 'px';
+    div.style.background = hex[slot];
+    div.textContent = slot === 'bg' ? 'B' : slot === 'fg' ? 'F' : slot.slice(1);
+    if (g.L < 0.55) div.classList.add('light-label');
+    div.title = slot;
+    div.addEventListener('pointerdown', e => startDragGray(e, slot));
+    wrap.appendChild(div);
   }
 
   function drawRowDots(wrap, rowKey, hex, isGhost) {
@@ -835,6 +896,29 @@
       }
       wrap.appendChild(div);
     });
+  }
+
+  function startDragGray(ev, slot) {
+    ev.preventDefault();
+    const canvas = document.getElementById('canvas');
+    const rect = canvas.getBoundingClientRect();
+    const backend = colorspace.get(palette.state.backend);
+    const AB = backend.AB_range;
+    function move(e) {
+      const x = Math.max(0, Math.min(CANVAS_PX, e.clientX - rect.left));
+      const y = Math.max(0, Math.min(CANVAS_PX, e.clientY - rect.top));
+      const [a, b] = pxToAb(x, y, AB);
+      const g = palette.state.grays[slot];
+      const clipped = colorspace.clipToGamut(backend, g.L, a, b);
+      g.a = clipped.a; g.b = clipped.b;
+      rerender();
+    }
+    function up() {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
   }
 
   function startDrag(ev, rowKey, idx) {
@@ -887,36 +971,57 @@
     else applyTheme('dark');
   } catch { applyTheme('dark'); }
 
-  // ───── row toggle ─────
+  // ───── chromatic row toggle (std vs brt, always one active) ─────
+  function applyActiveRow(newRow) {
+    activeRow = newRow;
+    document.querySelectorAll('#row-toggle button').forEach(x =>
+      x.classList.toggle('active', x.dataset.row === activeRow));
+    document.getElementById('L-line-std').classList.toggle('dim', activeRow !== 'std');
+    document.getElementById('L-line-brt').classList.toggle('dim', activeRow !== 'brt');
+    rerender();
+  }
   document.querySelectorAll('#row-toggle button').forEach(b => {
+    b.addEventListener('click', () => applyActiveRow(b.dataset.row));
+  });
+
+  // ───── gray selector (overlay: 0 or 1 selected, click again to clear) ─────
+  function applySelectedGray(slot) {
+    selectedGray = slot;
+    document.querySelectorAll('#gray-toggle button').forEach(x =>
+      x.classList.toggle('active', x.dataset.row === selectedGray));
+    rerender();
+  }
+  document.querySelectorAll('#gray-toggle button').forEach(b => {
     b.addEventListener('click', () => {
-      activeRow = b.dataset.row;
-      document.querySelectorAll('#row-toggle button').forEach(x =>
-        x.classList.toggle('active', x.dataset.row === activeRow));
-      document.getElementById('L-line-std').classList.toggle('dim', activeRow !== 'std');
-      document.getElementById('L-line-brt').classList.toggle('dim', activeRow !== 'brt');
-      rerender();
+      applySelectedGray(selectedGray === b.dataset.row ? null : b.dataset.row);
     });
   });
 
   // ───── grays ─────
   const graysEl = document.getElementById('grays');
   let graysBuilt = false;
-  // Tint reach (symmetric, in our `t` units) — how far you can drag the tint
-  // slider from center before hitting the gamut wall at this L. Used to scale
-  // the visual width of the tint slider.
-  function tintReachAt(L, backend) {
+  // Tint direction (a, b) per "warm unit" of slider. Warm = positive (yellow/orange);
+  // cool = negative (blue, slight green-blue). Diagonal but mostly b-axis since
+  // that's where warm/cool semantics live.
+  function tintDir(backend) {
     const mag = 0.06 * backend.AB_range;
+    return { a: 0.4 * mag, b: mag };
+  }
+
+  // Max reach in each direction (positive = warm, negative = cool). Asymmetric
+  // because the sRGB gamut is asymmetric in (a,b) at most L levels.
+  function tintReachAt(L, backend) {
+    const dir = tintDir(backend);
     function probe(sign) {
       let lo = 0, hi = 5;
       for (let i = 0; i < 16; i++) {
         const m = (lo + hi) / 2;
-        if (backend.inGamut(L, sign * m * 0.4 * mag, sign * m * mag)) lo = m;
+        if (backend.inGamut(L, sign * m * dir.a, sign * m * dir.b)) lo = m;
         else hi = m;
       }
       return lo;
     }
-    return Math.min(probe(1), probe(-1));
+    return { pos: probe(1), neg: probe(-1) };
   }
 
   function renderGrays(hex) {
@@ -956,11 +1061,29 @@
             rerender();
           }
         });
+        // Wheel = ±0.5 percentage point; shift+wheel = ±0.05 for fine adjustment.
+        // Browsers remap wheel-Y to wheel-X when shift is held, so we read
+        // whichever axis is nonzero.
+        function wheelHandler(e) {
+          e.preventDefault();
+          const step = e.shiftKey ? 0.05 : 0.5;
+          const raw = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+          const delta = raw < 0 ? +step : -step;
+          const current = palette.state.grays[k].L * 100;
+          const next = Math.max(0, Math.min(100, current + delta));
+          palette.setGrayL(k, next / 100);
+          rerender();
+        }
+        lSlider.addEventListener('wheel', wheelHandler, { passive: false });
+        lNum.addEventListener('wheel', wheelHandler, { passive: false });
         tSlider.addEventListener('input', e => {
-          const t = +e.target.value / 100;
+          const v = +e.target.value / 100; // [-1, +1]
           const backend = colorspace.get(palette.state.backend);
-          const mag = 0.06 * backend.AB_range;
-          palette.setGrayTint(k, t * mag * 0.4, t * mag);
+          const reach = tintReachAt(palette.state.grays[k].L, backend);
+          const dir = tintDir(backend);
+          // Asymmetric scaling: v=+1 → max warm reach; v=-1 → max cool reach
+          const scale = v >= 0 ? v * reach.pos : v * reach.neg;
+          palette.setGrayTint(k, scale * dir.a, scale * dir.b);
           rerender();
         });
         hxInput.addEventListener('input', e => {
@@ -978,7 +1101,7 @@
       graysBuilt = true;
     }
     const backend = colorspace.get(palette.state.backend);
-    const mag = 0.06 * backend.AB_range;
+    const dir = tintDir(backend);
     for (const k of paletteLib.GRAY_SLOTS) {
       const g = palette.state.grays[k];
       const lSlider = graysEl.querySelector(`.L-slider[data-key="${k}"]`);
@@ -988,17 +1111,22 @@
       const hxInput = graysEl.querySelector(`.gray-hex-input[data-key="${k}"]`);
 
       const lVal = (g.L * 100).toFixed(1);
-      // Don't clobber the input the user is currently typing into (avoid cursor jumps).
       if (document.activeElement !== lSlider) lSlider.value = lVal;
       if (document.activeElement !== lNum) lNum.value = lVal;
-      const t = mag > 0 ? Math.max(-1, Math.min(1, g.b / mag)) : 0;
-      if (document.activeElement !== tSlider) tSlider.value = Math.round(t * 100);
 
-      // Tint slider width by symmetric reach at this L. Base 110px → up to ~150% when L
-      // sits in the wide part of the gamut, down to 25% near white/black.
+      // Project current (a, b) onto the tint ray; sign of dot product picks direction.
+      // Normalize by the matching reach so slider position is "fraction of max in that direction".
       const reach = tintReachAt(g.L, backend);
-      const wPx = Math.max(28, Math.min(150, 110 * reach));
-      tSlider.style.width = wPx + 'px';
+      const dotProd = g.a * dir.a + g.b * dir.b;
+      const dirMag2 = dir.a * dir.a + dir.b * dir.b;
+      const projected = dirMag2 > 0 ? dotProd / dirMag2 : 0; // signed t units
+      let sliderV;
+      if (projected >= 0) {
+        sliderV = reach.pos > 0 ? Math.min(1, projected / reach.pos) : 0;
+      } else {
+        sliderV = reach.neg > 0 ? Math.max(-1, projected / reach.neg) : 0;
+      }
+      if (document.activeElement !== tSlider) tSlider.value = Math.round(sliderV * 100);
 
       sw.style.background = hex[k];
       if (document.activeElement !== hxInput) {
@@ -1088,7 +1216,8 @@
   // typically 3-5× JND.
   //   OKLab JND ≈ 0.02 (Ottosson).
   //   CIELAB ΔE76 JND ≈ 2.3 natively; our backend normalizes by 100 → 0.023.
-  const NOMINAL_JND = { oklab: 0.02, cielab: 0.023 };
+  //   Jzazbz JND ≈ 0.0017 (Safdar 2017, Cui 2019).
+  const NOMINAL_JND = { oklab: 0.02, cielab: 0.023, jzazbz: 0.0017 };
   function backendJnd() { return NOMINAL_JND[palette.state.backend] || 0.02; }
   function asMultiple(rawDe) { return rawDe / backendJnd(); }
 
