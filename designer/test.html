@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ansil16 designer — tests</title>
+<style>
+  body { font: 13px/1.5 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: #1e1e1e; color: #d8d8d8; padding: 20px; }
+  h1 { font-size: 18px; }
+  h2 { font-size: 14px; margin-top: 20px; }
+  #results { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .ok { color: #6aa969; }
+  .fail { color: #d36a6a; }
+  .err { color: #888; }
+</style>
+</head>
+<body>
+<h1>ansil16 designer — tests</h1>
+<div id="results">running…</div>
+
+<script>window.ansil16 = {};</script>
+<script src="lib/util.js"></script>
+<script src="lib/colorspace.js"></script>
+<script src="lib/oklab.js"></script>
+<script src="lib/cielab.js"></script>
+<script src="lib/conf.js"></script>
+<script src="lib/palette.js"></script>
+<script src="lib/metrics.js"></script>
+
+<script src="tests/runner.js"></script>
+<script src="tests/util.test.js"></script>
+<script src="tests/oklab.test.js"></script>
+<script src="tests/cielab.test.js"></script>
+<script src="tests/conf.test.js"></script>
+<script src="tests/palette.test.js"></script>
+<script src="tests/metrics.test.js"></script>
+
+<script>renderResults();</script>
+</body>
+</html>

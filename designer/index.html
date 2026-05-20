@@ -1,0 +1,1274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ansil16 designer</title>
+<style>
+  :root {
+    --ui-bg: #1e1e1e;
+    --ui-panel: #252525;
+    --ui-border: #383838;
+    --ui-text: #d8d8d8;
+    --ui-dim: #8a8a8a;
+    --ui-accent: #6aa9ff;
+    --ui-input-bg: #1a1a1a;
+    --ui-button-bg: #2f2f2f;
+    --metric-bad: #e26a6a;
+    --metric-warn: #e0a85a;
+  }
+  body.light-scheme {
+    --ui-bg: #ececec;
+    --ui-panel: #ffffff;
+    --ui-border: #cfcfcf;
+    --ui-text: #1a1a1a;
+    --ui-dim: #6c6c6c;
+    --ui-accent: #2a6cd4;
+    --ui-input-bg: #f5f5f5;
+    --ui-button-bg: #e8e8e8;
+    --metric-bad: #b83232;
+    --metric-warn: #a06200;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--ui-bg);
+    color: var(--ui-text);
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+  }
+  .app {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    height: 100vh;
+    gap: 1px;
+    background: var(--ui-border);
+  }
+  .panel { background: var(--ui-panel); padding: 16px 20px; overflow-y: auto; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ui-dim); margin: 0 0 8px; font-weight: 600; }
+  h2:not(:first-child) { margin-top: 20px; }
+
+  /* preview swatches */
+  .swatch-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+  .swatch {
+    aspect-ratio: 1;
+    border-radius: 4px;
+    display: flex; flex-direction: column;
+    align-items: stretch; justify-content: space-between;
+    padding: 4px 6px;
+    font: 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+    user-select: none;
+    overflow: hidden;
+  }
+  .swatch .swatch-num { font-size: 11px; font-weight: 600; line-height: 1; }
+  .swatch .swatch-hex { font-size: 8px; opacity: 0.6; line-height: 1; letter-spacing: -0.5px; }
+  .swatch .swatch-name { font-size: 9px; opacity: 0.75; line-height: 1; align-self: flex-end; }
+  .swatch.dark-text { color: rgba(0,0,0,0.78); }
+  .swatch.light-text { color: rgba(255,255,255,0.92); }
+  .bg-fg-row { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 6px; }
+  .bg-fg-row .swatch { aspect-ratio: 4/1; flex-direction: row; align-items: center; justify-content: flex-start; gap: 10px; }
+  .bg-fg-row .swatch .swatch-name { align-self: center; margin-left: auto; }
+  .bg-fg-row .swatch .swatch-hex { align-self: center; opacity: 0.7; }
+
+  /* syntax sample */
+  .syntax {
+    margin-top: 16px;
+    border-radius: 6px;
+    padding: 12px 14px;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre;
+    overflow-x: auto;
+    background: var(--p-bg);
+    color: var(--p-fg);
+  }
+  .syntax .c0 { color: var(--p-c0); }
+  .syntax .c1 { color: var(--p-c1); }
+  .syntax .c2 { color: var(--p-c2); }
+  .syntax .c3 { color: var(--p-c3); }
+  .syntax .c4 { color: var(--p-c4); }
+  .syntax .c5 { color: var(--p-c5); }
+  .syntax .c6 { color: var(--p-c6); }
+  .syntax .c7 { color: var(--p-c7); }
+  .syntax .c8 { color: var(--p-c8); }
+  .syntax .c9 { color: var(--p-c9); }
+  .syntax .c10 { color: var(--p-c10); }
+  .syntax .c11 { color: var(--p-c11); }
+  .syntax .c12 { color: var(--p-c12); }
+  .syntax .c13 { color: var(--p-c13); }
+  .syntax .c14 { color: var(--p-c14); }
+  .syntax .c15 { color: var(--p-c15); }
+  .syntax .bold { font-weight: 600; }
+
+  /* controls */
+  .row-block {
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 10px;
+    background: rgba(0,0,0,0.15);
+  }
+  .row-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 11px; color: var(--ui-dim); }
+  .row-head input[type=range] { vertical-align: middle; width: 160px; }
+  .L-val { font-family: ui-monospace, monospace; color: var(--ui-text); margin-left: 6px; min-width: 36px; display: inline-block; text-align: right; }
+
+  .canvas-wrap { position: relative; display: inline-block; }
+  canvas.gamut { display: block; border-radius: 4px; }
+  .dot {
+    position: absolute;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.6), 0 1px 3px rgba(0,0,0,0.5);
+    transform: translate(-50%, -50%);
+    cursor: grab;
+    display: flex; align-items: center; justify-content: center;
+    font: 9px/1 ui-monospace, monospace;
+    color: rgba(0,0,0,0.85);
+    user-select: none;
+    touch-action: none;
+  }
+  .dot.light-label { color: rgba(255,255,255,0.95); }
+  .dot:active { cursor: grabbing; }
+  .dot.ghost {
+    width: 11px; height: 11px;
+    border: 1px solid rgba(255,255,255,0.5);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+    opacity: 0.65;
+    cursor: default;
+    pointer-events: none;
+  }
+  .dot.gray-ghost {
+    width: 8px; height: 8px;
+    border: 1px solid rgba(255,255,255,0.35);
+    opacity: 0.55;
+  }
+
+  /* row toggle (pill) */
+  .row-toggle {
+    display: inline-flex;
+    background: var(--ui-border);
+    border-radius: 5px;
+    padding: 2px;
+    gap: 2px;
+  }
+  .row-toggle button {
+    background: transparent;
+    border: 0;
+    color: var(--ui-dim);
+    padding: 4px 14px;
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 3px;
+  }
+  .row-toggle button.active {
+    background: var(--ui-panel);
+    color: var(--ui-text);
+  }
+  .L-stack { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 12px; font-size: 11px; color: var(--ui-dim); }
+  .L-stack .L-line { display: flex; align-items: center; gap: 8px; }
+  .L-stack .L-line.dim { opacity: 0.6; }
+  .L-stack .L-line input { flex: 1; }
+  .L-stack .L-line .L-tag { font-family: ui-monospace, monospace; min-width: 28px; }
+
+  /* grays */
+  .gray-block { padding: 8px 12px; }
+  .gray-row { display: grid; grid-template-columns: 28px 1fr 130px 40px 78px; align-items: center; gap: 8px; padding: 4px 0; }
+  .gray-row label { font: 11px ui-monospace, monospace; color: var(--ui-dim); }
+  .gray-row input[type=range] { width: 100%; }
+  .gray-row .gray-swatch { height: 22px; border-radius: 3px; border: 1px solid var(--ui-border); }
+  .gray-row .gray-hex-input {
+    background: var(--ui-input-bg);
+    border: 1px solid var(--ui-border);
+    color: var(--ui-text);
+    font: 11px ui-monospace, monospace;
+    padding: 3px 4px;
+    border-radius: 3px;
+    width: 100%;
+    text-transform: uppercase;
+  }
+  .gray-row .gray-hex-input.invalid { border-color: var(--metric-bad); }
+  .gray-row .L-cell { display: flex; align-items: center; gap: 4px; }
+  .gray-row .L-cell .L-slider { flex: 1; }
+  .gray-row .L-cell .L-num {
+    width: 36px;
+    background: var(--ui-input-bg);
+    border: 1px solid var(--ui-border);
+    color: var(--ui-text);
+    font: 10px ui-monospace, monospace;
+    padding: 1px 3px;
+    border-radius: 3px;
+    text-align: right;
+    -moz-appearance: textfield;
+  }
+  .gray-row .L-cell .L-num::-webkit-outer-spin-button,
+  .gray-row .L-cell .L-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .gray-row .tint-cell {
+    display: flex; align-items: center; justify-content: center;
+    width: 130px;
+    gap: 4px;
+  }
+  .gray-row .tint-cell .tint-slider { /* width set dynamically in JS */ }
+  .gray-row .tint-label { font: 10px ui-monospace, monospace; color: var(--ui-dim); width: 8px; }
+
+  /* toolbar */
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
+  .toolbar button, .toolbar label.file-btn {
+    background: var(--ui-button-bg); border: 1px solid var(--ui-border); color: var(--ui-text);
+    padding: 6px 10px; border-radius: 4px; font-size: 12px; cursor: pointer;
+  }
+  .toolbar button:hover, .toolbar label.file-btn:hover { filter: brightness(1.15); }
+  .toolbar input[type=file] { display: none; }
+  .toolbar select {
+    background: var(--ui-button-bg); border: 1px solid var(--ui-border); color: var(--ui-text);
+    padding: 5px 8px; border-radius: 4px; font-size: 12px;
+  }
+  textarea.paste {
+    width: 100%; height: 70px;
+    background: var(--ui-input-bg); border: 1px solid var(--ui-border); color: var(--ui-text);
+    font: 11px ui-monospace, monospace; padding: 6px; border-radius: 4px; resize: vertical;
+  }
+  /* theme toggle */
+  .theme-toggle {
+    margin-left: auto;
+    background: var(--ui-button-bg);
+    border: 1px solid var(--ui-border);
+    color: var(--ui-text);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  /* export */
+  .export-block {
+    margin-top: 14px;
+    border-top: 1px solid var(--ui-border);
+    padding-top: 12px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .export-block input[type=text] {
+    background: var(--ui-input-bg); border: 1px solid var(--ui-border); color: var(--ui-text);
+    font: 12px ui-monospace, monospace; padding: 6px 8px; border-radius: 4px;
+  }
+  .export-block .actions { display: flex; gap: 8px; }
+  .export-block button {
+    background: var(--ui-accent); border: 0; color: #fff;
+    padding: 6px 14px; border-radius: 4px; font-weight: 600; cursor: pointer;
+  }
+  .export-block button.secondary { background: var(--ui-button-bg); color: var(--ui-text); border: 1px solid var(--ui-border); font-weight: normal; }
+  .hint { font-size: 11px; color: var(--ui-dim); margin-top: 4px; }
+
+  /* metrics */
+  .metrics-row {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    margin-bottom: 6px;
+  }
+  .metrics-row .metrics-grid { flex: 1; }
+  .metrics-row #profile { flex-shrink: 0; }
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    gap: 4px 10px;
+    font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+    align-items: baseline;
+  }
+  .metric-row { display: contents; }
+  .metric-row > * { padding: 2px 4px; border-radius: 3px; }
+  .metric-value { color: var(--ui-text); font-variant-numeric: tabular-nums; }
+  .metric-pair { color: var(--ui-text); font-size: 11px; }
+  .metric-desc { color: var(--ui-dim); font-size: 11px; }
+  /* severity colors (absolute thresholds: <1×JND red, <2×JND amber, else neutral) */
+  .metric-row.sev-bad .metric-value,
+  .metric-row.sev-bad .metric-pair { color: var(--metric-bad); }
+  .metric-row.sev-warn .metric-value,
+  .metric-row.sev-warn .metric-pair { color: var(--metric-warn); }
+  /* sev-ok inherits --ui-text — no override, so light and dark themes both work */
+  /* the single worst row gets a left rule + faint fill */
+  .metric-row.worst > * { background: rgba(226, 106, 106, 0.10); }
+  .metric-row.worst .metric-value { border-left: 3px solid #e26a6a; padding-left: 6px; margin-left: -3px; font-weight: 600; }
+  #profile {
+    display: block;
+    background: #161616;
+    border: 1px solid var(--ui-border);
+    border-radius: 4px;
+  }
+  .threshold-line { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ui-dim); margin-top: 6px; }
+  .threshold-line input { flex: 1; }
+
+  /* demo subtabs */
+  .demo-tabs { display: flex; gap: 4px; margin-bottom: 8px; border-bottom: 1px solid var(--ui-border); }
+  .demo-tabs .tab {
+    background: transparent; border: 0; color: var(--ui-dim);
+    padding: 6px 12px; font-size: 12px; cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .demo-tabs .tab.active { color: var(--ui-text); border-bottom-color: var(--ui-accent); }
+  .demo-tabs .tab:hover { color: var(--ui-text); }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  /* intelligibility grid */
+  .ig-grid {
+    display: grid;
+    grid-template-columns: 20px repeat(18, 1fr);
+    gap: 1px;
+    font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--ui-border);
+    padding: 1px;
+    border-radius: 4px;
+  }
+  .ig-cell {
+    aspect-ratio: 1;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 600;
+    cursor: pointer;
+    position: relative;
+  }
+  .ig-cell.selected {
+    box-shadow: inset 0 0 0 2px #ffd83a, inset 0 0 0 3px rgba(0,0,0,0.5);
+  }
+  .ig-label {
+    color: var(--ui-dim); font-size: 8px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--ui-panel);
+  }
+  .ig-caption { font-size: 10px; color: var(--ui-dim); margin-top: 6px; line-height: 1.4; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- LEFT: preview -->
+  <div class="panel left">
+    <h2>bg / fg</h2>
+    <div class="bg-fg-row">
+      <div class="swatch" data-key="bg"><span class="swatch-num">bg</span><span class="swatch-hex"></span><span class="swatch-name">background</span></div>
+      <div class="swatch" data-key="fg"><span class="swatch-num">fg</span><span class="swatch-hex"></span><span class="swatch-name">foreground</span></div>
+    </div>
+
+    <h2>16 ansi slots</h2>
+    <div class="swatch-grid" id="swatches"></div>
+
+    <h2>demo</h2>
+    <div class="demo-tabs" id="demo-tabs">
+      <button class="tab active" data-tab="syntax">syntax</button>
+      <button class="tab" data-tab="grid">intelligibility grid</button>
+    </div>
+
+    <div class="tab-pane active" id="tab-syntax">
+      <pre class="syntax" id="syntax"><span class="c8">// ansil16 designer — what does it look like in code?</span>
+<span class="c4 bold">import</span> <span class="c6">{ render, parse }</span> <span class="c4 bold">from</span> <span class="c2">"./palette.js"</span><span class="c7">;</span>
+
+<span class="c4 bold">const</span> <span class="c12">MAX_RETRIES</span> <span class="c7">=</span> <span class="c3">42</span><span class="c7">;</span>
+<span class="c4 bold">let</span> <span class="c15">message</span> <span class="c7">=</span> <span class="c2">`hello, world\n`</span><span class="c7">;</span>
+
+<span class="c5 bold">function</span> <span class="c12">greet</span><span class="c7">(</span><span class="c15">name</span><span class="c7">) {</span>
+  <span class="c4 bold">if</span> <span class="c7">(!</span><span class="c15">name</span><span class="c7">)</span> <span class="c4 bold">return</span> <span class="c1">null</span><span class="c7">;</span>
+  <span class="c4 bold">return</span> <span class="c2">`Hi, ${</span><span class="c15">name</span><span class="c2">}!`</span><span class="c7">;</span>
+<span class="c7">}</span>
+
+<span class="c8">// diff / log / status</span>
+<span class="c9 bold">- removed line</span>
+<span class="c10 bold">+ added line</span>
+<span class="c11 bold">! warning text</span>
+<span class="c14">~ modified</span>
+
+<span class="c13 bold">$</span> <span class="c12">ansil16</span> <span class="c2">set</span> <span class="c15">my-palette</span>
+<span class="c8">⮑ applied to 3 ttys</span></pre>
+    </div>
+
+    <div class="tab-pane" id="tab-grid">
+      <div class="ig-grid" id="ig-grid"></div>
+      <div class="ig-caption">
+        rows = foreground · columns = background · each cell shows "Aa" in fg-on-bg.
+        diagonal = same color (invisible by design). illegible cells reveal pairs
+        that collide. <strong>click cells to pin them</strong> — pinned pairs draw a
+        dashed line on the canvas while you drag.
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: controls -->
+  <div class="panel right">
+    <h2>load</h2>
+    <div class="toolbar">
+      <label>colorspace:
+        <select id="cs-select"></select>
+      </label>
+      <button class="theme-toggle" id="theme-toggle" title="toggle light/dark UI">☾</button>
+    </div>
+    <div class="toolbar">
+      <label class="file-btn">load .conf<input type="file" id="file-in" accept=".conf,text/plain"></label>
+      <button id="load-luv-dark">luv-rainbow-dark</button>
+      <button id="load-luv-light">luv-rainbow-light</button>
+      <button id="load-blank">blank</button>
+    </div>
+    <textarea class="paste" id="paste-in" placeholder="…or paste a .conf here"></textarea>
+
+    <h2>chromatic rows (c1–c6 standard, c9–c14 bright)</h2>
+    <div class="row-block">
+      <div class="row-head" style="justify-content: flex-start;">
+        <span style="margin-right: 8px;">editing:</span>
+        <div class="row-toggle" id="row-toggle">
+          <button data-row="std" class="active">standard</button>
+          <button data-row="brt">bright</button>
+        </div>
+        <label style="margin-left: 16px; font-size: 11px; cursor: pointer;">
+          <input type="checkbox" id="show-other-gamut" checked style="vertical-align: middle;">
+          <span style="vertical-align: middle;">show other row's gamut outline</span>
+        </label>
+      </div>
+      <div class="L-stack">
+        <div class="L-line" id="L-line-std">
+          <span class="L-tag">std</span>
+          <input type="range" id="L-std" min="0" max="100" value="55">
+          <span class="L-val" id="L-std-val">0.55</span>
+        </div>
+        <div class="L-line dim" id="L-line-brt">
+          <span class="L-tag">brt</span>
+          <input type="range" id="L-brt" min="0" max="100" value="78">
+          <span class="L-val" id="L-brt-val">0.78</span>
+        </div>
+      </div>
+      <div class="canvas-wrap" id="canvas-wrap">
+        <canvas class="gamut" id="canvas" width="400" height="400"></canvas>
+      </div>
+    </div>
+
+    <h2>grayscale (bg / fg / c0 / c7 / c8 / c15)</h2>
+    <div class="row-block gray-block" id="grays"></div>
+
+    <h2>metrics</h2>
+    <div class="row-block metrics-block">
+      <div class="metrics-row">
+        <div class="metrics-grid" id="metrics-grid"></div>
+        <canvas id="profile" width="220" height="220"></canvas>
+      </div>
+      <div class="threshold-line">
+        <span>target:</span>
+        <input type="range" id="target-mult" min="1" max="10" value="3" step="0.5">
+        <span class="L-val" id="target-mult-val">3.0×</span>
+        <span style="color: var(--ui-dim);">JND</span>
+      </div>
+      <div class="hint" style="margin-top: 6px;">
+        profile axes in × JND. red line = pair below 1× JND (indistinguishable).
+        amber = below target. nominal JND: OKLab ≈ 0.02, normalized CIELAB ≈ 0.023.
+      </div>
+    </div>
+
+    <div class="export-block">
+      <input type="text" id="export-name" value="my-palette" placeholder="palette name">
+      <div class="actions">
+        <button id="btn-download">download .conf</button>
+        <button class="secondary" id="btn-copy">copy to clipboard</button>
+      </div>
+      <div class="hint">drag dots in the canvas to position colors. each gray has independent L and a small tint nudge (a, b).</div>
+    </div>
+  </div>
+</div>
+
+<!-- pure logic -->
+<script>window.ansil16 = {};</script>
+<script src="lib/util.js"></script>
+<script src="lib/colorspace.js"></script>
+<script src="lib/oklab.js"></script>
+<script src="lib/cielab.js"></script>
+<script src="lib/conf.js"></script>
+<script src="lib/palette.js"></script>
+<script src="lib/metrics.js"></script>
+
+<!-- UI wiring -->
+<script>
+(function () {
+  'use strict';
+  const { util, colorspace, palette: paletteLib, conf, metrics } = window.ansil16;
+
+  const PRESETS = {
+    'luv-rainbow-dark': {
+      bg:'#000000', fg:'#FFFFFF',
+      c0:'#3B3B3B', c8:'#5E5E5E', c7:'#919191', c15:'#B9B9B9',
+      c1:'#D5898C', c2:'#69AD6F', c3:'#B19D56', c4:'#7F9FD4', c5:'#C988C6', c6:'#07B0AE',
+      c9:'#FFB0CA', c10:'#AFD18D', c11:'#EABF92', c12:'#8ECFF3', c13:'#DEB8F7', c14:'#6DD9C2',
+    },
+    'luv-rainbow-light': {
+      bg:'#FFFFFF', fg:'#000000',
+      c0:'#B9B9B9', c8:'#919191', c7:'#5E5E5E', c15:'#3B3B3B',
+      c1:'#D93668', c2:'#63810B', c3:'#B66027', c4:'#3279C5', c5:'#AF4FBE', c6:'#1D857B',
+      c9:'#A50445', c10:'#445A09', c11:'#82400F', c12:'#035493', c13:'#852693', c14:'#085D56',
+    },
+    'blank': {
+      bg:'#202020', fg:'#D0D0D0',
+      c0:'#303030', c8:'#505050', c7:'#A0A0A0', c15:'#E0E0E0',
+      c1:'#A04040', c2:'#40A040', c3:'#A09040', c4:'#4060A0', c5:'#9040A0', c6:'#40A0A0',
+      c9:'#D06060', c10:'#60D060', c11:'#D0B060', c12:'#6080D0', c13:'#B060D0', c14:'#60D0D0',
+    },
+  };
+
+  const CANVAS_PX = 400;
+  const STORAGE_KEY = 'ansil16-designer-v1';
+  const THEME_KEY = 'ansil16-designer-theme';
+  const palette = paletteLib.make('oklab');
+  let activeRow = 'std'; // 'std' | 'brt'
+  let showOtherGamut = true;
+
+  // Theme-aware canvas colors. Pulled at paint time so toggle takes effect.
+  function isLightTheme() { return document.body.classList.contains('light-scheme'); }
+  function themeColors() {
+    const light = isLightTheme();
+    return {
+      profileBg: light ? '#f7f7f7' : '#161616',
+      axes:      light ? '#bbb'    : '#333',
+      grid:      light ? '#e4e4e4' : '#262626',
+      axisText:  light ? '#777'    : '#888',
+      dotBorder: light ? '#222'    : '#fff',
+      outline:   light ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.4)',
+      outOfGamutGray: light ? 218 : 38,
+    };
+  }
+
+  // ───── swatches (build once) ─────
+  // Canonical ANSI names. 7/8/15 don't have universal names — the most common
+  // conventions: 0=black, 7=white (light gray), 8=gray (bright black), 15=br white.
+  const SLOT_NAMES = ['black','red','green','yellow','blue','magenta','cyan','white',
+                      'gray','br red','br green','br yellow','br blue','br magenta','br cyan','br white'];
+  const swatchGrid = document.getElementById('swatches');
+  for (let i = 0; i < 16; i++) {
+    const el = document.createElement('div');
+    el.className = 'swatch';
+    el.dataset.key = 'c' + i;
+    el.innerHTML = `<span class="swatch-num">${i}</span><span class="swatch-hex"></span><span class="swatch-name">${SLOT_NAMES[i]}</span>`;
+    el.title = `c${i} — ${SLOT_NAMES[i]}`;
+    swatchGrid.appendChild(el);
+  }
+
+  // ───── colorspace dropdown ─────
+  const csSelect = document.getElementById('cs-select');
+  for (const k of colorspace.keys()) {
+    const opt = document.createElement('option');
+    opt.value = k;
+    opt.textContent = colorspace.get(k).name;
+    csSelect.appendChild(opt);
+  }
+  csSelect.addEventListener('change', () => {
+    palette.setBackend(csSelect.value);
+    syncSlidersFromState();
+    rerender();
+  });
+
+  // ───── helpers ─────
+  function abToPx(a, b, AB) {
+    const half = CANVAS_PX / 2;
+    return [(a / AB) * half + half, half - (b / AB) * half];
+  }
+  function pxToAb(x, y, AB) {
+    const half = CANVAS_PX / 2;
+    return [((x - half) / half) * AB, -((y - half) / half) * AB];
+  }
+
+  // ───── render ─────
+  function rerender() {
+    const hex = palette.toHex();
+    try { applyCss(hex); } catch (e) { console.error('applyCss failed', e); }
+    try { paintCanvas(); } catch (e) { console.error('paintCanvas failed', e); }
+    try { paintPinnedPairs(); } catch (e) { console.error('paintPinnedPairs failed', e); }
+    try { paintAllDots(hex); } catch (e) { console.error('paintAllDots failed', e); }
+    try { renderGrays(hex); } catch (e) { console.error('renderGrays failed', e); }
+    try { renderMetrics(hex); } catch (e) { console.error('renderMetrics failed', e); }
+    try { renderGrid(hex); } catch (e) { console.error('renderGrid failed', e); }
+    try { persist(); } catch (e) { console.error('persist failed', e); }
+  }
+
+  // ───── demo subtabs ─────
+  document.querySelectorAll('#demo-tabs .tab').forEach(b => {
+    b.addEventListener('click', () => {
+      const target = b.dataset.tab;
+      document.querySelectorAll('#demo-tabs .tab').forEach(x =>
+        x.classList.toggle('active', x === b));
+      document.querySelectorAll('.tab-pane').forEach(pane =>
+        pane.classList.toggle('active', pane.id === 'tab-' + target));
+    });
+  });
+
+  // ───── intelligibility grid ─────
+  // Order groups: bg/fg + grayscale ramp first, then standard chromatic, then
+  // bright chromatic. Makes collisions within similar-purpose colors easy to spot.
+  const GRID_ORDER = ['bg', 'fg', 'c0', 'c8', 'c7', 'c15',
+                      'c1', 'c2', 'c3', 'c4', 'c5', 'c6',
+                      'c9', 'c10', 'c11', 'c12', 'c13', 'c14'];
+  function slotAbbrev(k) {
+    if (k === 'bg') return 'B';
+    if (k === 'fg') return 'F';
+    return k.slice(1);
+  }
+  // Pinned pairs from clicks. Each entry "fg|bg" — survives rerenders but not page reload.
+  const pinnedPairs = new Set();
+  function pinKey(fg, bg) { return fg + '|' + bg; }
+
+  let gridBuilt = false;
+  function renderGrid(hex) {
+    const grid = document.getElementById('ig-grid');
+    const slots = GRID_ORDER;
+    if (!gridBuilt) {
+      grid.innerHTML = '';
+      const corner = document.createElement('div');
+      corner.className = 'ig-label';
+      grid.appendChild(corner);
+      for (const k of slots) {
+        const lbl = document.createElement('div');
+        lbl.className = 'ig-label';
+        lbl.textContent = slotAbbrev(k);
+        grid.appendChild(lbl);
+      }
+      for (const fgK of slots) {
+        const rowLbl = document.createElement('div');
+        rowLbl.className = 'ig-label';
+        rowLbl.textContent = slotAbbrev(fgK);
+        grid.appendChild(rowLbl);
+        for (const bgK of slots) {
+          const cell = document.createElement('div');
+          cell.className = 'ig-cell';
+          cell.dataset.fg = fgK;
+          cell.dataset.bg = bgK;
+          cell.textContent = 'Aa';
+          cell.addEventListener('click', () => {
+            const key = pinKey(fgK, bgK);
+            if (pinnedPairs.has(key)) pinnedPairs.delete(key);
+            else pinnedPairs.add(key);
+            cell.classList.toggle('selected', pinnedPairs.has(key));
+            // Repaint canvas overlay only; everything else unchanged.
+            paintCanvas();
+            paintPinnedPairs();
+            paintAllDots(palette.toHex());
+          });
+          grid.appendChild(cell);
+        }
+      }
+      gridBuilt = true;
+    }
+    grid.querySelectorAll('.ig-cell').forEach(cell => {
+      cell.style.background = hex[cell.dataset.bg];
+      cell.style.color = hex[cell.dataset.fg];
+      const key = pinKey(cell.dataset.fg, cell.dataset.bg);
+      cell.classList.toggle('selected', pinnedPairs.has(key));
+    });
+  }
+
+  // Return (a, b) of a slot in the active backend's coordinates, or null if
+  // the slot has no canvas position (shouldn't happen — all 18 slots have lab).
+  function slotAb(slot) {
+    if (paletteLib.STD_SLOTS.includes(slot)) {
+      return palette.state.std.dots[paletteLib.STD_SLOTS.indexOf(slot)];
+    }
+    if (paletteLib.BRT_SLOTS.includes(slot)) {
+      return palette.state.brt.dots[paletteLib.BRT_SLOTS.indexOf(slot)];
+    }
+    if (paletteLib.GRAY_SLOTS.includes(slot)) {
+      return palette.state.grays[slot];
+    }
+    return null;
+  }
+
+  // Draw dashed line on canvas between two slots' positions for each pinned pair.
+  function paintPinnedPairs() {
+    if (pinnedPairs.size === 0) return;
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const backend = colorspace.get(palette.state.backend);
+    const AB = backend.AB_range;
+    ctx.save();
+    ctx.strokeStyle = '#ffd83a';
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([5, 4]);
+    ctx.globalAlpha = 0.85;
+    for (const key of pinnedPairs) {
+      const [fg, bg] = key.split('|');
+      const fgAb = slotAb(fg);
+      const bgAb = slotAb(bg);
+      if (!fgAb || !bgAb) continue;
+      const [x1, y1] = abToPx(fgAb.a, fgAb.b, AB);
+      const [x2, y2] = abToPx(bgAb.a, bgAb.b, AB);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function applyCss(hex) {
+    const root = document.documentElement;
+    for (const k of paletteLib.ALL_SLOTS) {
+      root.style.setProperty('--p-' + k, hex[k]);
+    }
+    document.querySelectorAll('.swatch').forEach(el => {
+      const k = el.dataset.key;
+      el.style.background = hex[k];
+      const dark = util.relativeLuminance(hex[k]) > 0.5;
+      el.classList.toggle('dark-text', dark);
+      el.classList.toggle('light-text', !dark);
+      const hexEl = el.querySelector('.swatch-hex');
+      if (hexEl) hexEl.textContent = hex[k];
+    });
+  }
+
+  // Paint the gamut at the active row's L. Then optionally overlay the other
+  // row's gamut boundary as a dashed outline (so you can see what shape the
+  // *other* L slice has without leaving this view).
+  function paintCanvas() {
+    const canvas = document.getElementById('canvas');
+    const backend = colorspace.get(palette.state.backend);
+    const L = palette.state[activeRow].L;
+    const AB = backend.AB_range;
+    const ctx = canvas.getContext('2d');
+    const img = ctx.createImageData(CANVAS_PX, CANVAS_PX);
+    const data = img.data;
+    const oogGray = themeColors().outOfGamutGray;
+    for (let py = 0; py < CANVAS_PX; py++) {
+      for (let px = 0; px < CANVAS_PX; px++) {
+        const [a, b] = pxToAb(px, py, AB);
+        const [r, g, bl] = backend.labToLinearRgb(L, a, b);
+        const i = (py * CANVAS_PX + px) * 4;
+        if (r < 0 || r > 1 || g < 0 || g > 1 || bl < 0 || bl > 1) {
+          const gray = oogGray;
+          data[i] = data[i+1] = data[i+2] = gray;
+          data[i+3] = 255;
+        } else {
+          data[i]   = Math.round(util.linearToSrgb(r) * 255);
+          data[i+1] = Math.round(util.linearToSrgb(g) * 255);
+          data[i+2] = Math.round(util.linearToSrgb(bl) * 255);
+          data[i+3] = 255;
+        }
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+
+    if (showOtherGamut) {
+      const otherRow = activeRow === 'std' ? 'brt' : 'std';
+      paintGamutOutline(ctx, backend, palette.state[otherRow].L, AB);
+    }
+  }
+
+  // Sample around hue 0..2π, binary-search max chroma per direction at the
+  // given L, and stroke the closed loop. ~60 samples × 24 iters = ~1500
+  // inGamut calls; cheap.
+  function paintGamutOutline(ctx, backend, L, AB) {
+    const N = 64;
+    const points = [];
+    for (let i = 0; i < N; i++) {
+      const h = (i / N) * 2 * Math.PI;
+      const dirA = Math.cos(h), dirB = Math.sin(h);
+      // start with a small step we know is in gamut (origin at this L)
+      if (!backend.inGamut(L, 0, 0)) continue;
+      let lo = 0, hi = AB * 2;
+      for (let it = 0; it < 24; it++) {
+        const m = (lo + hi) / 2;
+        if (backend.inGamut(L, dirA * m, dirB * m)) lo = m;
+        else hi = m;
+      }
+      points.push([dirA * lo, dirB * lo]);
+    }
+    if (points.length < 3) return;
+    ctx.save();
+    ctx.strokeStyle = themeColors().outline;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    const [x0, y0] = abToPx(points[0][0], points[0][1], AB);
+    ctx.moveTo(x0, y0);
+    for (let i = 1; i < points.length; i++) {
+      const [x, y] = abToPx(points[i][0], points[i][1], AB);
+      ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Paint dots. Grayscale slots (bg/fg/c0/c7/c8/c15) render as small ghosts
+  // for reference — useful for spotting chromatic-vs-gray collisions. Then
+  // the inactive chromatic row as larger ghosts. Active row dots on top,
+  // full-size and draggable.
+  function paintAllDots(hex) {
+    const wrap = document.getElementById('canvas-wrap');
+    wrap.querySelectorAll('.dot').forEach(d => d.remove());
+    drawGrayDots(wrap, hex);
+    const ghostRow = activeRow === 'std' ? 'brt' : 'std';
+    drawRowDots(wrap, ghostRow, hex, true);
+    drawRowDots(wrap, activeRow, hex, false);
+  }
+
+  function drawGrayDots(wrap, hex) {
+    const backend = colorspace.get(palette.state.backend);
+    const AB = backend.AB_range;
+    for (const slot of paletteLib.GRAY_SLOTS) {
+      const g = palette.state.grays[slot];
+      const [x, y] = abToPx(g.a, g.b, AB);
+      const div = document.createElement('div');
+      div.className = 'dot ghost gray-ghost';
+      div.style.left = x + 'px';
+      div.style.top = y + 'px';
+      div.style.background = hex[slot];
+      div.title = slot; // hover tooltip since they cluster
+      wrap.appendChild(div);
+    }
+  }
+
+  function drawRowDots(wrap, rowKey, hex, isGhost) {
+    const backend = colorspace.get(palette.state.backend);
+    const AB = backend.AB_range;
+    const slots = rowKey === 'std' ? paletteLib.STD_SLOTS : paletteLib.BRT_SLOTS;
+    const dots = palette.state[rowKey].dots;
+    const L = palette.state[rowKey].L;
+    dots.forEach((d, i) => {
+      const [x, y] = abToPx(d.a, d.b, AB);
+      const div = document.createElement('div');
+      div.className = 'dot' + (isGhost ? ' ghost' : '');
+      div.style.left = x + 'px';
+      div.style.top = y + 'px';
+      div.style.background = hex[slots[i]];
+      if (!isGhost) {
+        div.textContent = slots[i].slice(1);
+        if (L < 0.55) div.classList.add('light-label');
+        div.addEventListener('pointerdown', e => startDrag(e, rowKey, i));
+      }
+      wrap.appendChild(div);
+    });
+  }
+
+  function startDrag(ev, rowKey, idx) {
+    ev.preventDefault();
+    // Deliberately NOT calling setPointerCapture: the captured element gets
+    // destroyed each rerender (paintAllDots wipes and recreates), which in
+    // some browsers silently kills the pointer-event stream for that pointer.
+    // Window-level listeners alone are sufficient.
+    const canvas = document.getElementById('canvas');
+    const rect = canvas.getBoundingClientRect();
+    const backend = colorspace.get(palette.state.backend);
+    const AB = backend.AB_range;
+    function move(e) {
+      const x = Math.max(0, Math.min(CANVAS_PX, e.clientX - rect.left));
+      const y = Math.max(0, Math.min(CANVAS_PX, e.clientY - rect.top));
+      const [a, b] = pxToAb(x, y, AB);
+      palette.moveDot(rowKey, idx, a, b);
+      rerender();
+    }
+    function up() {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    }
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  document.getElementById('show-other-gamut').addEventListener('change', e => {
+    showOtherGamut = e.target.checked;
+    rerender();
+  });
+
+  // ───── theme toggle ─────
+  const themeBtn = document.getElementById('theme-toggle');
+  function applyTheme(scheme) {
+    document.body.classList.toggle('light-scheme', scheme === 'light');
+    themeBtn.textContent = scheme === 'light' ? '☀' : '☾';
+    themeBtn.title = scheme === 'light' ? 'switch to dark' : 'switch to light';
+    try { localStorage.setItem(THEME_KEY, scheme); } catch {}
+  }
+  themeBtn.addEventListener('click', () => {
+    const next = isLightTheme() ? 'dark' : 'light';
+    applyTheme(next);
+    rerender();
+  });
+  // restore on load
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === 'light') applyTheme('light');
+    else applyTheme('dark');
+  } catch { applyTheme('dark'); }
+
+  // ───── row toggle ─────
+  document.querySelectorAll('#row-toggle button').forEach(b => {
+    b.addEventListener('click', () => {
+      activeRow = b.dataset.row;
+      document.querySelectorAll('#row-toggle button').forEach(x =>
+        x.classList.toggle('active', x.dataset.row === activeRow));
+      document.getElementById('L-line-std').classList.toggle('dim', activeRow !== 'std');
+      document.getElementById('L-line-brt').classList.toggle('dim', activeRow !== 'brt');
+      rerender();
+    });
+  });
+
+  // ───── grays ─────
+  const graysEl = document.getElementById('grays');
+  let graysBuilt = false;
+  // Tint reach (symmetric, in our `t` units) — how far you can drag the tint
+  // slider from center before hitting the gamut wall at this L. Used to scale
+  // the visual width of the tint slider.
+  function tintReachAt(L, backend) {
+    const mag = 0.06 * backend.AB_range;
+    function probe(sign) {
+      let lo = 0, hi = 5;
+      for (let i = 0; i < 16; i++) {
+        const m = (lo + hi) / 2;
+        if (backend.inGamut(L, sign * m * 0.4 * mag, sign * m * mag)) lo = m;
+        else hi = m;
+      }
+      return lo;
+    }
+    return Math.min(probe(1), probe(-1));
+  }
+
+  function renderGrays(hex) {
+    if (!graysBuilt) {
+      for (const k of paletteLib.GRAY_SLOTS) {
+        const row = document.createElement('div');
+        row.className = 'gray-row';
+        row.innerHTML = `
+          <label>${k}</label>
+          <span class="L-cell">
+            <span class="tint-label">L</span>
+            <input type="range" class="L-slider" min="0" max="100" step="0.5" data-key="${k}">
+            <input type="number" class="L-num" min="0" max="100" step="0.1" data-key="${k}">
+          </span>
+          <span class="tint-cell">
+            <span class="tint-label">⊕</span>
+            <input type="range" class="tint-slider" min="-100" max="100" step="1" data-key="${k}">
+          </span>
+          <div class="gray-swatch" data-key="${k}"></div>
+          <input type="text" class="gray-hex-input" maxlength="7" data-key="${k}">
+        `;
+        graysEl.appendChild(row);
+
+        const lSlider = row.querySelector('.L-slider');
+        const lNum = row.querySelector('.L-num');
+        const tSlider = row.querySelector('.tint-slider');
+        const hxInput = row.querySelector('.gray-hex-input');
+
+        lSlider.addEventListener('input', e => {
+          palette.setGrayL(k, +e.target.value / 100);
+          rerender();
+        });
+        lNum.addEventListener('input', e => {
+          const v = parseFloat(e.target.value);
+          if (isFinite(v)) {
+            palette.setGrayL(k, Math.max(0, Math.min(100, v)) / 100);
+            rerender();
+          }
+        });
+        tSlider.addEventListener('input', e => {
+          const t = +e.target.value / 100;
+          const backend = colorspace.get(palette.state.backend);
+          const mag = 0.06 * backend.AB_range;
+          palette.setGrayTint(k, t * mag * 0.4, t * mag);
+          rerender();
+        });
+        hxInput.addEventListener('input', e => {
+          const v = e.target.value.trim();
+          const valid = /^#[0-9a-fA-F]{6}$/.test(v);
+          e.target.classList.toggle('invalid', !valid && v.length > 0);
+          if (valid) {
+            const backend = colorspace.get(palette.state.backend);
+            const [L, a, b] = backend.hexToLab(v.toUpperCase());
+            palette.state.grays[k] = { L: L, a: a, b: b };
+            rerender();
+          }
+        });
+      }
+      graysBuilt = true;
+    }
+    const backend = colorspace.get(palette.state.backend);
+    const mag = 0.06 * backend.AB_range;
+    for (const k of paletteLib.GRAY_SLOTS) {
+      const g = palette.state.grays[k];
+      const lSlider = graysEl.querySelector(`.L-slider[data-key="${k}"]`);
+      const lNum = graysEl.querySelector(`.L-num[data-key="${k}"]`);
+      const tSlider = graysEl.querySelector(`.tint-slider[data-key="${k}"]`);
+      const sw = graysEl.querySelector(`.gray-swatch[data-key="${k}"]`);
+      const hxInput = graysEl.querySelector(`.gray-hex-input[data-key="${k}"]`);
+
+      const lVal = (g.L * 100).toFixed(1);
+      // Don't clobber the input the user is currently typing into (avoid cursor jumps).
+      if (document.activeElement !== lSlider) lSlider.value = lVal;
+      if (document.activeElement !== lNum) lNum.value = lVal;
+      const t = mag > 0 ? Math.max(-1, Math.min(1, g.b / mag)) : 0;
+      if (document.activeElement !== tSlider) tSlider.value = Math.round(t * 100);
+
+      // Tint slider width by symmetric reach at this L. Base 110px → up to ~150% when L
+      // sits in the wide part of the gamut, down to 25% near white/black.
+      const reach = tintReachAt(g.L, backend);
+      const wPx = Math.max(28, Math.min(150, 110 * reach));
+      tSlider.style.width = wPx + 'px';
+
+      sw.style.background = hex[k];
+      if (document.activeElement !== hxInput) {
+        hxInput.value = hex[k];
+        hxInput.classList.remove('invalid');
+      }
+    }
+  }
+
+  // ───── L sliders ─────
+  function syncSlidersFromState() {
+    document.getElementById('L-std').value = Math.round(palette.state.std.L * 100);
+    document.getElementById('L-brt').value = Math.round(palette.state.brt.L * 100);
+    document.getElementById('L-std-val').textContent = palette.state.std.L.toFixed(2);
+    document.getElementById('L-brt-val').textContent = palette.state.brt.L.toFixed(2);
+    csSelect.value = palette.state.backend;
+  }
+
+  document.getElementById('L-std').addEventListener('input', e => {
+    const L = +e.target.value / 100;
+    palette.setRowL('std', L);
+    document.getElementById('L-std-val').textContent = L.toFixed(2);
+    rerender();
+  });
+  document.getElementById('L-brt').addEventListener('input', e => {
+    const L = +e.target.value / 100;
+    palette.setRowL('brt', L);
+    document.getElementById('L-brt-val').textContent = L.toFixed(2);
+    rerender();
+  });
+
+  // ───── load / export ─────
+  function loadHex(hex) {
+    palette.loadHex(hex);
+    syncSlidersFromState();
+    rerender();
+  }
+
+  document.getElementById('load-luv-dark').addEventListener('click', () => loadHex(PRESETS['luv-rainbow-dark']));
+  document.getElementById('load-luv-light').addEventListener('click', () => loadHex(PRESETS['luv-rainbow-light']));
+  document.getElementById('load-blank').addEventListener('click', () => loadHex(PRESETS['blank']));
+
+  document.getElementById('file-in').addEventListener('change', async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const text = await f.text();
+    const parsed = conf.parseConf(text);
+    loadHex(parsed);
+    document.getElementById('export-name').value = f.name.replace(/\.conf$/, '');
+  });
+
+  document.getElementById('paste-in').addEventListener('input', e => {
+    const text = e.target.value;
+    if (text.includes('=')) {
+      try { loadHex(conf.parseConf(text)); } catch {}
+    }
+  });
+
+  document.getElementById('btn-download').addEventListener('click', () => {
+    const name = document.getElementById('export-name').value || 'my-palette';
+    const text = conf.formatConf(palette.toHex(), { name: name });
+    const blob = new Blob([text], { type: 'text/plain' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name + '.conf';
+    a.click();
+  });
+
+  document.getElementById('btn-copy').addEventListener('click', async () => {
+    const name = document.getElementById('export-name').value || 'my-palette';
+    const text = conf.formatConf(palette.toHex(), { name: name });
+    try {
+      await navigator.clipboard.writeText(text);
+      const btn = document.getElementById('btn-copy');
+      const orig = btn.textContent;
+      btn.textContent = 'copied!';
+      setTimeout(() => { btn.textContent = orig; }, 1200);
+    } catch {
+      alert(text);
+    }
+  });
+
+  // ───── metrics + L-C profile ─────
+  // Nominal JND per backend. Display all ΔE values as multiples of this so
+  // the user can think in perceptual units instead of raw numbers. Target
+  // multiple is the user's design goal — "glance discriminability" is
+  // typically 3-5× JND.
+  //   OKLab JND ≈ 0.02 (Ottosson).
+  //   CIELAB ΔE76 JND ≈ 2.3 natively; our backend normalizes by 100 → 0.023.
+  const NOMINAL_JND = { oklab: 0.02, cielab: 0.023 };
+  function backendJnd() { return NOMINAL_JND[palette.state.backend] || 0.02; }
+  function asMultiple(rawDe) { return rawDe / backendJnd(); }
+
+  let targetMultiple = 3.0;
+  const targetSlider = document.getElementById('target-mult');
+  const targetVal = document.getElementById('target-mult-val');
+  targetSlider.addEventListener('input', e => {
+    targetMultiple = +e.target.value;
+    targetVal.textContent = targetMultiple.toFixed(1) + '×';
+    rerender();
+  });
+  targetVal.textContent = targetMultiple.toFixed(1) + '×';
+
+  const STD_SLOT_NAMES = paletteLib.STD_SLOTS;
+  const BRT_SLOT_NAMES = paletteLib.BRT_SLOTS;
+
+  function renderMetrics(hex) {
+    const backendKey = palette.state.backend;
+    const s = metrics.summary(hex, backendKey);
+    const grid = document.getElementById('metrics-grid');
+
+    // chromatic-only ordered slot list, parallel to summary's fgMin/bgMin idx
+    const CHROMATIC = ['c1','c2','c3','c4','c5','c6','c9','c10','c11','c12','c13','c14'];
+    const GRAY_FOR_METRIC = ['bg','fg','c0','c8','c7','c15']; // matches summary
+
+    // Each row: [value, terse-pair, description-text]
+    const rows = [
+      [s.stdMin.min,
+       s.stdMin.pair && STD_SLOT_NAMES[s.stdMin.pair[0]] + '↔' + STD_SLOT_NAMES[s.stdMin.pair[1]],
+       'std intra (c1–c6)'],
+      [s.brtMin.min,
+       s.brtMin.pair && BRT_SLOT_NAMES[s.brtMin.pair[0]] + '↔' + BRT_SLOT_NAMES[s.brtMin.pair[1]],
+       'brt intra (c9–c14)'],
+      [s.crossMin.min,
+       s.crossMin.pair && STD_SLOT_NAMES[s.crossMin.pair[0]] + '↔' + BRT_SLOT_NAMES[s.crossMin.pair[1]],
+       'std ↔ brt'],
+      [s.grayMin.min,
+       s.grayMin.pair && GRAY_FOR_METRIC[s.grayMin.pair[0]] + '↔' + GRAY_FOR_METRIC[s.grayMin.pair[1]],
+       'grayscale ramp'],
+      [s.fgMin.min, 'fg ↔ ' + CHROMATIC[s.fgMin.idx], 'fg vs chromatic'],
+      [s.bgMin.min, 'bg ↔ ' + CHROMATIC[s.bgMin.idx], 'bg vs chromatic'],
+    ];
+
+    // Identify the worst (lowest) row for emphasis.
+    let worstIdx = 0;
+    rows.forEach((r, i) => { if (r[0] < rows[worstIdx][0]) worstIdx = i; });
+
+    grid.innerHTML = rows.map(([val, pair, desc], i) => {
+      const mult = asMultiple(val);
+      let sev = 'sev-ok';
+      if (mult < 1) sev = 'sev-bad';
+      else if (mult < targetMultiple) sev = 'sev-warn';
+      const worst = i === worstIdx ? ' worst' : '';
+      return `<div class="metric-row ${sev}${worst}">` +
+        `<div class="metric-value">${mult.toFixed(1)}×</div>` +
+        `<div class="metric-pair">${pair || ''}</div>` +
+        `<div class="metric-desc">${desc}</div>` +
+      `</div>`;
+    }).join('');
+    paintProfile(hex);
+  }
+
+  // L-vs-chroma scatter, plotted in × JND units on both axes. 1 JND = same
+  // screen distance regardless of backend (OKLab and CIELAB now directly
+  // comparable). Equal px/unit on both axes. Lines connect pairs below the
+  // user's target × JND.
+  function paintProfile(hex) {
+    const canvas = document.getElementById('profile');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const pad = 16;
+    const tc = themeColors();
+    ctx.fillStyle = tc.profileBg;
+    ctx.fillRect(0, 0, W, H);
+
+    const backendKey = palette.state.backend;
+    const backend = colorspace.get(backendKey);
+    const jnd = backendJnd();
+    const slots = paletteLib.ALL_SLOTS;
+    const points = slots.map(k => {
+      const [L, a, b] = backend.hexToLab(hex[k]);
+      const C = Math.hypot(a, b);
+      return { k: k, hex: hex[k], L_u: L / jnd, C_u: C / jnd };
+    });
+
+    // L (normalized to [0,1]) spans 1/jnd ≈ 50 (OKLab) or ≈ 43 (CIELAB) units.
+    // Chroma extent varies with palette saturation.
+    const Lmax = 1.0 / jnd;
+    const Cmax = Math.max(10, ...points.map(p => p.C_u * 1.05));
+
+    // Equal px/unit (so 1 JND = 1 JND on both axes).
+    const scaleX = (W - 2 * pad) / Cmax;
+    const scaleY = (H - 2 * pad) / Lmax;
+    const scale = Math.min(scaleX, scaleY);
+    const pxX = (C_u) => pad + C_u * scale;
+    const pxY = (L_u) => H - pad - L_u * scale;
+
+    // axes
+    ctx.strokeStyle = tc.axes;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad, pad); ctx.lineTo(pad, H - pad);
+    ctx.moveTo(pad, H - pad); ctx.lineTo(W - pad, H - pad);
+    ctx.stroke();
+    ctx.fillStyle = tc.axisText;
+    ctx.font = '9px ui-monospace, monospace';
+    ctx.fillText('L (×JND)', 4, pad - 4);
+    ctx.fillText('C →', W - 26, H - pad + 12);
+
+    // Reference rings of JND multiples from origin (helps gauge scale)
+    ctx.strokeStyle = tc.grid;
+    ctx.lineWidth = 0.5;
+    for (const mult of [10, 20, 30, 40]) {
+      const y = pxY(mult);
+      if (y > pad) {
+        ctx.beginPath();
+        ctx.moveTo(pad, y);
+        ctx.lineTo(W - pad, y);
+        ctx.stroke();
+      }
+    }
+
+    // sub-threshold pair lines: red < 1× JND, amber < target × JND
+    for (let i = 0; i < points.length; i++) {
+      for (let j = i + 1; j < points.length; j++) {
+        const d = metrics.dE(points[i].hex, points[j].hex, backendKey);
+        const mult = d / jnd;
+        if (mult < targetMultiple) {
+          ctx.strokeStyle = mult < 1 ? '#e26a6a' : '#e0a85a';
+          ctx.globalAlpha = mult < 1 ? 0.85 : 0.55;
+          ctx.lineWidth = mult < 1 ? 1.3 : 1;
+          ctx.beginPath();
+          ctx.moveTo(pxX(points[i].C_u), pxY(points[i].L_u));
+          ctx.lineTo(pxX(points[j].C_u), pxY(points[j].L_u));
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
+    // dots
+    for (const p of points) {
+      ctx.beginPath();
+      ctx.fillStyle = p.hex;
+      ctx.arc(pxX(p.C_u), pxY(p.L_u), 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = tc.dotBorder;
+      ctx.globalAlpha = 0.4;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ───── persistence ─────
+  function persist() {
+    try {
+      const snapshot = {
+        backend: palette.state.backend,
+        hex: palette.toHex(),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    } catch {}
+  }
+
+  function restore() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return false;
+      const snap = JSON.parse(raw);
+      if (snap.backend) csSelect.value = snap.backend, palette.state.backend = snap.backend;
+      if (snap.hex) loadHex(snap.hex);
+      return true;
+    } catch { return false; }
+  }
+
+  // ───── boot ─────
+  if (!restore()) {
+    loadHex(PRESETS['luv-rainbow-dark']);
+  }
+})();
+</script>
+</body>
+</html>
