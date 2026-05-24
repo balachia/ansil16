@@ -127,13 +127,58 @@ ansil16_render_kitty_args() {
     printf '%s\n' "${out# }"
 }
 
-# Return 0 if we can talk to a local kitty. Plain `kitty @` uses kitty's
-# tty-based self-discovery, which works when invoked from inside a kitty
-# pty (the 95% case). External callers need a `listen_on` pin in kitty.conf;
-# that's their concern, not ours.
+# Return 0 if we can talk to a local kitty. With no arg, plain `kitty @`
+# uses kitty's tty-based self-discovery (works from inside a kitty pty).
+# With a socket arg (`unix:/path` or `tcp:host:port`), probes that socket
+# explicitly — the path used for external callers (skhd/Alfred/launchd).
 ansil16_kitty_reachable() {
     command -v kitty >/dev/null 2>&1 || return 1
-    kitty @ ls >/dev/null 2>&1
+    if [[ $# -ge 1 && -n $1 ]]; then
+        kitty @ --to "$1" ls >/dev/null 2>&1
+    else
+        kitty @ ls >/dev/null 2>&1
+    fi
+}
+
+# Discover a kitty remote-control socket address for external callers.
+# Echoes `unix:/path` on success; returns 1 if nothing usable is found.
+# Order:
+#   1. $KITTY_LISTEN_ON  -- honored as-is. Set inside kitty children
+#      automatically; a caller can pre-set it to target a specific instance,
+#      or to handle abstract / tcp sockets that aren't filesystem-visible.
+#   2. Newest user-owned kitty's listening unix socket, via lsof. Pulls the
+#      actual bound path out of /proc-ish state, so it works regardless of
+#      the user's `listen_on` naming convention.
+# Limitations of step 2: only finds filesystem-path unix sockets (i.e.,
+# `listen_on unix:/path/...` — the common case). For abstract sockets
+# (`unix:@name`, Linux) or tcp listeners, the caller must pre-set
+# KITTY_LISTEN_ON.
+ansil16_discover_kitty_socket() {
+    if [[ -n ${KITTY_LISTEN_ON:-} ]]; then
+        printf '%s\n' "$KITTY_LISTEN_ON"
+        return 0
+    fi
+    command -v pgrep >/dev/null 2>&1 || return 1
+    local lsof_bin
+    if command -v lsof >/dev/null 2>&1; then
+        lsof_bin=lsof
+    elif [[ -x /usr/sbin/lsof ]]; then
+        # macOS: lsof ships in /usr/sbin, which Alfred / some launchers
+        # strip from PATH. Fall back to the absolute path.
+        lsof_bin=/usr/sbin/lsof
+    else
+        return 1
+    fi
+    local pid sock
+    pid=$(pgrep -n -U "$UID" kitty 2>/dev/null) || return 1
+    [[ -n $pid ]] || return 1
+    # `lsof -p PID -aU -F n` emits one record per unix socket fd. Listening
+    # sockets bound to a path appear as `n/abs/path`; peer connections appear
+    # as `n->0x...` and are skipped by the `^n/` match.
+    sock=$("$lsof_bin" -p "$pid" -aU -F n 2>/dev/null \
+        | awk '/^n\//{print substr($0,2); exit}')
+    [[ -n $sock && -S $sock ]] || return 1
+    printf 'unix:%s\n' "$sock"
 }
 
 # Reset OSC sequence:

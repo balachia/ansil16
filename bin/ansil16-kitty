@@ -2,12 +2,18 @@
 # ansil16-kitty -- apply a palette via kitty's remote-control socket.
 #
 # Usage:
-#   ansil16-kitty PALETTE
+#   ansil16-kitty PALETTE [--kitty-socket]
 #
 # Translates a palette .conf into `kitty @ set-colors --all --configured ...`.
 # Requires `allow_remote_control yes` (or socket-only) in kitty.conf and a
 # reachable local kitty socket. Bypasses the pty entirely, so tmux / ssh
 # layers don't interfere. See notes/osc-vs-kitty-ipc.md for rationale.
+#
+# Default mode uses plain `kitty @` — kitty's tty-based self-discovery,
+# which works from inside a kitty pty. With `--kitty-socket`, ansil16 discovers
+# a listening kitty socket and passes `--to <addr>` explicitly; this is
+# the path for external callers (Alfred, skhd, launchd, cron). See
+# notes/external-invocation.md for the protocol.
 
 set -euo pipefail
 
@@ -25,28 +31,59 @@ SELF_DIR=$(cd "$(dirname "$_self")" && pwd -P)
 
 usage() {
     cat >&2 <<'EOF'
-Usage: ansil16-kitty PALETTE
-  PALETTE  path to a .conf palette file
+Usage: ansil16-kitty PALETTE [-s|--kitty-socket]
+  PALETTE              path to a .conf palette file
+  -s, --kitty-socket   discover a listening kitty socket (for external
+                       invocation; honors $KITTY_LISTEN_ON, else inspects
+                       newest user-owned kitty)
 EOF
     exit 1
 }
 
-[[ $# -ge 1 ]] || usage
-case ${1:-} in -h|--help) usage ;; esac
-palette=$1; shift
-[[ $# -eq 0 ]] || { echo "ansil16-kitty: unexpected arg: $1" >&2; usage; }
+palette=
+use_socket=
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help) usage ;;
+        -s|--kitty-socket)  use_socket=1; shift ;;
+        --) shift; break ;;
+        -*) echo "ansil16-kitty: unknown arg: $1" >&2; usage ;;
+        *)
+            [[ -z $palette ]] || { echo "ansil16-kitty: unexpected arg: $1" >&2; usage; }
+            palette=$1; shift ;;
+    esac
+done
+[[ -n $palette ]] || usage
 [[ -f $palette ]] || { echo "ansil16-kitty: no such file: $palette" >&2; exit 1; }
 
 ansil16_parse_palette "$palette"
 args=$(ansil16_render_kitty_args)
 [[ -n $args ]] || { echo "ansil16-kitty: palette has no colors" >&2; exit 1; }
 
-# Plain `kitty @` — kitty's tty-based self-discovery handles the inside-kitty
-# case (the only one base ansil16 targets). External callers (Alfred, skhd)
-# need `listen_on` pinned in their own kitty.conf; that's out of scope here.
-kitty @ ls >/dev/null 2>&1 || {
-    echo "ansil16-kitty: kitty IPC unreachable." >&2
-    echo "  Run this from inside a kitty window, or pin listen_on in kitty.conf for external use." >&2
+# Resolve socket if requested. In socket mode all `kitty @` calls get an
+# explicit `--to <addr>`; without it, kitty does tty-based self-discovery.
+sock=
+if [[ -n $use_socket ]]; then
+    sock=$(ansil16_discover_kitty_socket) || {
+        echo "ansil16-kitty: no kitty socket found." >&2
+        echo "  Ensure kitty is running with \`listen_on\` configured in kitty.conf," >&2
+        echo "  or pre-set KITTY_LISTEN_ON in the calling environment." >&2
+        exit 1
+    }
+fi
+
+probe=(kitty @)
+apply=(kitty @)
+if [[ -n $sock ]]; then
+    probe+=(--to "$sock")
+    apply+=(--to "$sock")
+fi
+
+"${probe[@]}" ls >/dev/null 2>&1 || {
+    echo "ansil16-kitty: kitty IPC unreachable${sock:+ at $sock}." >&2
+    if [[ -z $sock ]]; then
+        echo "  Run this from inside a kitty window, or pass --kitty-socket for external use." >&2
+    fi
     exit 1
 }
 
@@ -58,7 +95,7 @@ kitty @ ls >/dev/null 2>&1 || {
 # "Error: i/o timeout"; treat that as cosmetic (kitty applies what it can
 # on its event loop regardless) and exit success.
 # shellcheck disable=SC2086  # $args is intentionally word-split
-err=$(kitty @ set-colors --all --configured $args 2>&1 >/dev/null) || true
+err=$("${apply[@]}" set-colors --all --configured $args 2>&1 >/dev/null) || true
 case $err in
     "") ;;
     *"i/o timeout"*) ;;

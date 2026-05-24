@@ -2,10 +2,13 @@
 # ansil16 -- apply a 16-color ANSI palette.
 #
 # Subcommands:
-#   set NAME [--auto|--kitty|--osc] [--all]
+#   set NAME [--auto|-k|--kitty|-o|--osc] [-a|--all] [-s|--kitty-socket]
 #                      apply palette. Default --auto prefers kitty IPC if
-#                      reachable, falls back to OSC; --all is OSC-only and
-#                      broadcasts to every tty.
+#                      reachable, falls back to OSC; -a/--all is OSC-only and
+#                      broadcasts to every tty; -s/--kitty-socket forces kitty
+#                      backend via a discovered listening socket (for external
+#                      use: Raycast, skhd, launchd — see
+#                      notes/external-invocation.md).
 #   reset [--all]      reset to terminal defaults: bg/fg/cursor (]111 ]110 ]112)
 #                      AND all 16 ANSI slots (]104). Emits to current tty by
 #                      default; --all broadcasts to every tty and also clears
@@ -31,10 +34,12 @@ SELF_DIR=$(cd "$(dirname "$_self")" && pwd -P)
 usage() {
     cat >&2 <<'EOF'
 Usage:
-  ansil16 set NAME [--auto|--kitty|--osc] [--all]
+  ansil16 set NAME [--auto|-k|--kitty|-o|--osc] [-a|--all] [-s|--kitty-socket]
                              apply palette. --auto (default) prefers kitty
                              IPC if reachable, falls back to OSC.
-                             --all (OSC only) = broadcast to every tty.
+                             -a/--all (OSC only) = broadcast to every tty.
+                             -s/--kitty-socket = use a discovered kitty
+                             socket (for external callers; implies --kitty).
   ansil16 reset [--all]      emit reset OSC to current tty (or every tty)
   ansil16 list               list available palettes
   ansil16 current            print active palette name
@@ -55,15 +60,27 @@ case $cmd in
         name=$1; shift
         mode=auto
         broadcast=
+        use_socket=
         while [[ $# -gt 0 ]]; do
             case $1 in
-                --auto)  mode=auto;  shift ;;
-                --kitty) mode=kitty; shift ;;
-                --osc)   mode=osc;   shift ;;
-                --all)   broadcast=1; shift ;;
+                --auto)                mode=auto;     shift ;;
+                -k|--kitty)            mode=kitty;    shift ;;
+                -o|--osc)              mode=osc;      shift ;;
+                -a|--all)              broadcast=1;   shift ;;
+                -s|--kitty-socket)     use_socket=1;  shift ;;
                 *) echo "ansil16: unknown arg: $1" >&2; usage ;;
             esac
         done
+        # --kitty-socket implies the kitty backend: external callers (Raycast,
+        # skhd, launchd, cron) have no controlling tty, so the OSC path can't
+        # work. Reject combinations that contradict that.
+        if [[ -n $use_socket ]]; then
+            case $mode in
+                osc) echo "ansil16: --kitty-socket is incompatible with --osc" >&2; exit 1 ;;
+                *)   mode=kitty ;;
+            esac
+            [[ -z $broadcast ]] || { echo "ansil16: --kitty-socket is incompatible with --all" >&2; exit 1; }
+        fi
         palette=$(ansil16_find_palette "$name") || {
             echo "ansil16: no palette named '$name'" >&2
             avail=$(ansil16_list_palettes | tr '\n' ' ')
@@ -81,7 +98,12 @@ case $cmd in
                 fi ;;
         esac
         case $backend in
-            kitty) "$SELF_DIR/ansil16-kitty" "$palette" ;;
+            kitty)
+                if [[ -n $use_socket ]]; then
+                    "$SELF_DIR/ansil16-kitty" "$palette" --kitty-socket
+                else
+                    "$SELF_DIR/ansil16-kitty" "$palette"
+                fi ;;
             osc)
                 if [[ -n $broadcast ]]; then
                     "$SELF_DIR/ansil16-emit" "$palette" --all
